@@ -1,0 +1,89 @@
+[
+  {
+    "MaxOverallTonality": 1.598,
+    "MinSpectralPurity": 0.693,
+    "MinMidHighRatio": 0.345,
+    "MaxMidHighRatio": 0.62,
+    "MaxOscCV": 0.612,
+    "MaxEnvRegularity": 0.669,
+    "MinOscillations": 0.209,
+    "MaxOscillations": 0.481
+  },
+  {
+    "MinSpectralPurity": 0.78,
+    "MinMidHighRatio": 0.557,
+    "MaxMidHighRatio": 0.67,
+    "MinBandFocus": 0.426,
+    "MaxEnvRegularity": 0.76
+  },
+  {
+    "MinSpectralPurity": 0.527,
+    "MaxSpectralPurity": 0.697,
+    "MinMidHighRatio": 0.623,
+    "MinBandFocus": 0.372,
+    "MinOscillations": 0.163
+  },
+  {
+    "MinSpectralPurity": 0.723,
+    "MinMidHighRatio": 0.509,
+    "MaxOscCV": 0.35
+  },
+  {
+    "MinHighPitchRatio": 0.797,
+    "MaxMidHighRatio": 0.631,
+    "MaxOscCV": 0.49,
+    "MinEnvRegularity": 0.246,
+    "MaxOscillations": 0.287
+  },
+  {
+    "MaxOverallTonality": 1.358,
+    "MinSpectralPurity": 0.617,
+    "MinMidHighRatio": 0.289,
+    "MaxMidHighRatio": 0.385,
+    "MinOscCV": 0.28,
+    "MaxOscCV": 0.649,
+    "MinOscillations": 0.11,
+    "MaxOscillations": 0.355
+  },
+  {
+    "MinOverallTonality": 1.392,
+    "MinMidHighRatio": 0.083,
+    "MaxMidHighRatio": 0.132,
+    "MinOscCV": 0.118,
+    "MaxOscCV": 0.167,
+    "MaxEnvRegularity": 0.549
+  },
+  {
+    "MinHighPitchRatio": 0.478,
+    "MinSpectralPurity": 0.651,
+    "MinOscCV": 0.484,
+    "MinOscillations": 0.329,
+    "MaxOscillations": 0.441
+  },
+  {
+    "MinMaxZCR": 0.029,
+    "MinMidHighRatio": 0.345,
+    "MinBandFocus": 0.492,
+    "MinEnvRegularity": 0.466,
+    "MaxOscillations": 0.094
+  },
+  {
+    "MaxHighPitchRatio": 0.303,
+    "MinBandFocus": 0.408,
+    "MaxBandFocus": 0.448,
+    "MinOscCV": 0.498,
+    "MaxOscCV": 0.597
+  },
+  {
+    "MinSpectralPurity": 0.683,
+    "MaxBandFocus": 0.448,
+    "MaxOscCV": 0.484,
+    "MaxOscillations": 0.121
+  },
+  {
+    "MaxHighPitchRatio": 0.009,
+    "MaxSpectralPurity": 0.522,
+    "MinMidHighRatio": 0.533,
+    "MinOscillations": 0.257
+  }
+]

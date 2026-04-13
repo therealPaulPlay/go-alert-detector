@@ -1,8 +1,10 @@
 package alertdetector
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
+	"os"
 	"reflect"
 	"testing"
 )
@@ -304,17 +306,38 @@ func groupFiles(positives, negatives map[string][]Metrics) []ruleGroup {
 	return groups
 }
 
+// boundsToRule converts a slice of bounds into a rule struct by setting the
+// corresponding Min<Metric> / Max<Metric> field for each bound
+func boundsToRule(bounds []bound) rule {
+	var r rule
+	v := reflect.ValueOf(&r).Elem()
+	for _, b := range bounds {
+		prefix := "Max"
+		if b.isMin {
+			prefix = "Min"
+		}
+		f := v.FieldByName(prefix + metricFields[b.metricIdx])
+		if f.IsValid() {
+			f.SetFloat(b.threshold)
+		}
+	}
+	return r
+}
+
 // Main entry point ------------------------------------------------------------------------------
 
-// TestOptimizeRules derives optimal detection rules from the test samples and prints them
+// TestOptimizeRules derives optimal detection rules from the test samples,
+// prints a human-readable summary, and writes the result to rules.json
 func TestOptimizeRules(t *testing.T) {
 	positives, negatives := computeAudioSamples(t)
 	fmt.Printf("\n%d positive files (%d samples), %d negative files (%d samples)\n\n",
 		len(positives), len(flatten(positives)), len(negatives), len(flatten(negatives)))
 
 	groups := groupFiles(positives, negatives)
+	rules := make([]rule, len(groups))
 	var totalLeaks int
 	for i, g := range groups {
+		rules[i] = boundsToRule(g.bounds)
 		status := ""
 		if g.unrejected > 0 {
 			status = fmt.Sprintf("  [LEAKS %d negatives]", g.unrejected)
@@ -335,4 +358,14 @@ func TestOptimizeRules(t *testing.T) {
 	if totalLeaks > 0 {
 		fmt.Printf("Total negative leaks across all rules: %d\n", totalLeaks)
 	}
+
+	// Persist the derived rules so Analyze picks them up on next run
+	data, err := json.MarshalIndent(rules, "", "  ")
+	if err != nil {
+		t.Fatalf("failed to marshal rules: %v", err)
+	}
+	if err := os.WriteFile("rules.json", append(data, '\n'), 0644); err != nil {
+		t.Fatalf("failed to write rules.json: %v", err)
+	}
+	fmt.Printf("Wrote %d rules to rules.json\n", len(rules))
 }
