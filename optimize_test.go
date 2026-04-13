@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -130,31 +131,25 @@ func (b bound) passes(m Metrics) bool {
 // candidateBounds returns min/max threshold candidates placed at the midpoint
 // between the positive range edge and the nearest negative outside that range
 func candidateBounds(positives, negatives []Metrics) []bound {
+	if len(positives) == 0 {
+		return nil
+	}
 	var candidates []bound
-	for metricIdx := range metricFields {
-		get := func(m Metrics) float64 { return metricValue(m, metricIdx) }
-		posLow, posHigh := extent(positives, get)
-		if math.IsInf(posLow, 1) {
-			continue
+	for idx := range metricFields {
+		get := func(m Metrics) float64 { return metricValue(m, idx) }
+		low, high := math.Inf(1), math.Inf(-1)
+		for _, p := range positives {
+			v := get(p)
+			low, high = min(low, v), max(high, v)
 		}
-		if t, ok := midpointSplit(negatives, get, posLow, true); ok {
-			candidates = append(candidates, bound{metricIdx, true, t})
+		if t, ok := midpointSplit(negatives, get, low, true); ok {
+			candidates = append(candidates, bound{idx, true, t})
 		}
-		if t, ok := midpointSplit(negatives, get, posHigh, false); ok {
-			candidates = append(candidates, bound{metricIdx, false, t})
+		if t, ok := midpointSplit(negatives, get, high, false); ok {
+			candidates = append(candidates, bound{idx, false, t})
 		}
 	}
 	return candidates
-}
-
-// extent returns the min and max of the given getter across samples
-func extent(samples []Metrics, get func(Metrics) float64) (low, high float64) {
-	low, high = math.Inf(1), math.Inf(-1)
-	for _, s := range samples {
-		v := get(s)
-		low, high = min(low, v), max(high, v)
-	}
-	return
 }
 
 // midpointSplit finds the nearest negative on the outside of edge and returns
@@ -183,66 +178,52 @@ func midpointSplit(negatives []Metrics, get func(Metrics) float64, edge float64,
 	return t, true
 }
 
-// countRejected counts how many negatives fail the given bound
-func countRejected(negatives []Metrics, b bound) int {
-	n := 0
-	for _, neg := range negatives {
-		if !b.passes(neg) {
-			n++
+// splitBy partitions samples into those passing and failing the bound
+func splitBy(samples []Metrics, b bound) (passing, failing []Metrics) {
+	for _, s := range samples {
+		if b.passes(s) {
+			passing = append(passing, s)
+		} else {
+			failing = append(failing, s)
 		}
 	}
-	return n
-}
-
-// allPass reports whether every positive passes the given bound
-func allPass(positives []Metrics, b bound) bool {
-	for _, p := range positives {
-		if !b.passes(p) {
-			return false
-		}
-	}
-	return true
+	return
 }
 
 // findBounds greedily picks bounds that reject the most remaining negatives
 // while keeping every positive. Returns the chosen bounds plus how many
 // negatives could not be rejected by any available bound
 func findBounds(positives, negatives []Metrics) (chosen []bound, unrejected int) {
-	candidates := candidateBounds(positives, negatives)
-	remaining := append([]Metrics(nil), negatives...)
+	// Keep only candidates that pass every positive - positives never change
+	// across iterations so we can filter once up front
+	var candidates []bound
+	for _, c := range candidateBounds(positives, negatives) {
+		if pass, _ := splitBy(positives, c); len(pass) == len(positives) {
+			candidates = append(candidates, c)
+		}
+	}
 
+	remaining := append([]Metrics(nil), negatives...)
 	for len(remaining) > 0 {
-		// Find the candidate that eliminates the most remaining negatives
-		bestIdx, bestCount := -1, 0
+		// Pick the candidate rejecting the most remaining negatives
+		bestIdx := -1
+		var bestKept []Metrics
+		bestRejected := 0
 		for i, c := range candidates {
-			if !allPass(positives, c) {
-				continue
-			}
-			if n := countRejected(remaining, c); n > bestCount {
-				bestIdx, bestCount = i, n
+			kept, _ := splitBy(remaining, c)
+			rejected := len(remaining) - len(kept)
+			if rejected > bestRejected {
+				bestIdx, bestRejected, bestKept = i, rejected, kept
 			}
 		}
 		if bestIdx < 0 {
 			break // No candidate helps further
 		}
-
 		chosen = append(chosen, candidates[bestIdx])
-		remaining = filterPassing(remaining, candidates[bestIdx])
+		remaining = bestKept
 		candidates = append(candidates[:bestIdx], candidates[bestIdx+1:]...)
 	}
 	return chosen, len(remaining)
-}
-
-// filterPassing returns samples that pass the given bound (the ones that
-// weren't rejected)
-func filterPassing(samples []Metrics, b bound) []Metrics {
-	var kept []Metrics
-	for _, s := range samples {
-		if b.passes(s) {
-			kept = append(kept, s)
-		}
-	}
-	return kept
 }
 
 // Build rules based on bounds ----------------------------------------------------------------------------------
@@ -263,47 +244,87 @@ func flatten(s map[string][]Metrics) []Metrics {
 	return out
 }
 
-// buildSharedRule builds a rule covering all positive variants of the given
-// files, returning the bounds and the count of negatives still unrejected
-func buildSharedRule(files []string, positives map[string][]Metrics, negatives []Metrics) ([]bound, int) {
-	var combined []Metrics
+// samplesFor collects all positive metric variants for the given files
+func samplesFor(files []string, positives map[string][]Metrics) []Metrics {
+	var out []Metrics
 	for _, f := range files {
-		combined = append(combined, positives[f]...)
+		out = append(out, positives[f]...)
 	}
-	return findBounds(combined, negatives)
+	return out
 }
 
-// groupFiles greedily merges positive files into shared rule groups, adding
-// candidates only if they preserve zero-FP separation
-func groupFiles(positives, negatives map[string][]Metrics) []ruleGroup {
-	flatNeg := flatten(negatives)
-	grouped := make(map[string]bool)
-	var groups []ruleGroup
-
-	for startFile := range positives {
-		if grouped[startFile] {
-			continue
-		}
-
-		members := []string{startFile}
-		bounds, unrejected := buildSharedRule(members, positives, flatNeg)
-		for candidateFile := range positives {
-			if grouped[candidateFile] || candidateFile == startFile {
+// margin returns the total headroom of a rule: for each bound, the distance
+// from the threshold to the nearest positive sample on the accepting side
+// Larger = more robust against distribution shift
+func margin(bounds []bound, samples []Metrics) float64 {
+	var total float64
+	for _, b := range bounds {
+		best := math.Inf(1)
+		for _, s := range samples {
+			v := metricValue(s, b.metricIdx)
+			var d float64
+			if b.isMin && v >= b.threshold {
+				d = v - b.threshold
+			} else if !b.isMin && v < b.threshold {
+				d = b.threshold - v
+			} else {
 				continue
 			}
-			if b, u := buildSharedRule(append(members, candidateFile), positives, flatNeg); u == 0 {
-				members = append(members, candidateFile)
-				bounds = b
-				unrejected = u
+			if d < best {
+				best = d
 			}
 		}
-
-		for _, f := range members {
-			grouped[f] = true
+		if !math.IsInf(best, 1) {
+			total += best
 		}
-		groups = append(groups, ruleGroup{members, bounds, unrejected})
+	}
+	return total
+}
+
+// groupFiles agglomeratively merges files, starting from singletons and
+// repeatedly picking the pair with the fewest-bound zero-FP rule
+func groupFiles(positives, negatives map[string][]Metrics) []ruleGroup {
+	flatNeg := flatten(negatives)
+
+	// Start with one group per file
+	var groups []ruleGroup
+	for file := range positives {
+		b, u := findBounds(samplesFor([]string{file}, positives), flatNeg)
+		groups = append(groups, ruleGroup{[]string{file}, b, u})
+	}
+
+	for {
+		i, j, merged := findBestMerge(groups, positives, flatNeg)
+		if i < 0 {
+			break
+		}
+		groups[i] = merged
+		groups = append(groups[:j], groups[j+1:]...)
 	}
 	return groups
+}
+
+// findBestMerge picks the pair whose combined zero-FP rule needs the fewest
+// bounds, tie-broken by the largest positive-side margin. i=-1 if none exist
+func findBestMerge(groups []ruleGroup, positives map[string][]Metrics, flatNeg []Metrics) (bestI, bestJ int, best ruleGroup) {
+	bestI = -1
+	var bestMargin float64
+	for i := range groups {
+		for j := i + 1; j < len(groups); j++ {
+			files := slices.Concat(groups[i].files, groups[j].files)
+			samples := samplesFor(files, positives)
+			b, u := findBounds(samples, flatNeg)
+			if u != 0 {
+				continue
+			}
+			m := margin(b, samples)
+			if bestI < 0 || len(b) < len(best.bounds) ||
+				(len(b) == len(best.bounds) && m > bestMargin) {
+				bestI, bestJ, best, bestMargin = i, j, ruleGroup{files, b, 0}, m
+			}
+		}
+	}
+	return
 }
 
 // boundsToRule converts a slice of bounds into a rule struct by setting the
