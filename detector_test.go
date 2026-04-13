@@ -6,15 +6,11 @@ import (
 	"math"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/gunter-q12/resample"
 )
 
 const testSampleRate = 48000
-
-// checkInterval matches the polling rate used in root-firmware
-var checkInterval = 2 * time.Second
 
 // loadWAV reads a 16-bit mono WAV file, resampling to testSampleRate if needed
 func loadWAV(t *testing.T, path string) []int16 {
@@ -75,24 +71,17 @@ func scaleVolume(samples []int16, factor float64) []int16 {
 	return out
 }
 
-func feedAndDetect(d *Detector, samples []int16, trackStop bool) (detected, stopped bool) {
-	step := int(checkInterval.Seconds()) * testSampleRate
-	for offset := d.inputSamples; offset <= len(samples); offset += step {
-		window := samples[offset-d.inputSamples : offset]
-
-		if d.Analyze(window) != nil {
-			detected = true
-			// If we don't care about where it stops detecting, return on the first positive detection
-			if !trackStop {
-				return
-			}
-		} else if detected {
-			// If previously detected but no longer at this point, return as stopped
-			stopped = true
-			return
+// scaleSpeed resamples to simulate speed change (factor > 1 = faster/higher pitch)
+func scaleSpeed(samples []int16, factor float64) []int16 {
+	out := make([]int16, int(float64(len(samples))/factor))
+	for i := range out {
+		idx := int(float64(i) * factor)
+		if idx >= len(samples) {
+			idx = len(samples) - 1
 		}
+		out[i] = samples[idx]
 	}
-	return
+	return out
 }
 
 type audioTestCase struct {
@@ -195,22 +184,13 @@ var audioTests = []audioTestCase{
 	{"underground_echo", false},
 }
 
-// detectAudio runs Analyze or feedAndDetect based on clip length
-func detectAudio(d *Detector, samples []int16) bool {
-	if len(samples) > d.inputSamples {
-		detected, _ := feedAndDetect(d, samples, false)
-		return detected
-	}
-	return d.Analyze(samples) != nil
-}
-
 // TestAudioDetection runs each test file at normal volume
 func TestAudioDetection(t *testing.T) {
 	for _, tc := range audioTests {
 		t.Run(tc.file, func(t *testing.T) {
 			d := newDetector()
 			samples := loadWAV(t, "testdata/"+tc.file+".wav")
-			detected := detectAudio(d, samples)
+			detected := d.Analyze(samples) != nil
 			if tc.detect && !detected {
 				t.Errorf("expected detection for %s", tc.file)
 			}
@@ -235,7 +215,7 @@ func TestAudioDetection_VolumeScaling(t *testing.T) {
 				t.Run(tc.file, func(t *testing.T) {
 					d := newDetector()
 					samples := scaleVolume(loadWAV(t, "testdata/"+tc.file+".wav"), vol.factor)
-					detected := detectAudio(d, samples)
+					detected := d.Analyze(samples) != nil
 					if tc.detect && !detected {
 						t.Errorf("expected detection for %s at %s", tc.file, vol.name)
 					}
@@ -248,31 +228,17 @@ func TestAudioDetection_VolumeScaling(t *testing.T) {
 	}
 }
 
-
-// scaleSpeed resamples to simulate speed change (factor > 1 = faster/higher pitch)
-func scaleSpeed(samples []int16, factor float64) []int16 {
-	out := make([]int16, int(float64(len(samples))/factor))
-	for i := range out {
-		idx := int(float64(i) * factor)
-		if idx >= len(samples) {
-			idx = len(samples) - 1
-		}
-		out[i] = samples[idx]
-	}
-	return out
-}
-
-// TestAudioDetection_SpeedScaling tests at 0.9x and 1.1x speed
+// TestAudioDetection_SpeedScaling tests across speed variants
 func TestAudioDetection_SpeedScaling(t *testing.T) {
 	for _, s := range []struct {
 		name   string
 		factor float64
-	}{{"slow_0.9x", 0.9}, {"slow_0.95x", 0.95}, {"fast_1.05x", 1.05}, {"fast_1.1x", 1.1}} {
+	}{{"slow_0.9x", 0.9}, {"slow_0.925x", 0.925}, {"slow_0.95x", 0.95}, {"relaxed_0.975x", 0.975}, {"swift_1.025x", 1.025}, {"fast_1.05x", 1.05}, {"fast_1.075x", 1.075}, {"fast_1.1x", 1.1}} {
 		t.Run(s.name, func(t *testing.T) {
 			for _, tc := range audioTests {
 				t.Run(tc.file, func(t *testing.T) {
 					d := newDetector()
-					detected := detectAudio(d, scaleSpeed(loadWAV(t, "testdata/"+tc.file+".wav"), s.factor))
+					detected := d.Analyze(scaleSpeed(loadWAV(t, "testdata/"+tc.file+".wav"), s.factor)) != nil
 					if tc.detect && !detected {
 						t.Errorf("expected detection at %s", s.name)
 					}
@@ -285,6 +251,54 @@ func TestAudioDetection_SpeedScaling(t *testing.T) {
 	}
 }
 
+// TestAudioDetection_DurationTrimming tests with clips trimmed to various lengths
+func TestAudioDetection_DurationTrimming(t *testing.T) {
+	for _, dur := range []struct {
+		name    string
+		seconds int
+	}{{"8s", 8}, {"12s", 12}, {"16s", 16}, {"20s", 20}} {
+		t.Run(dur.name, func(t *testing.T) {
+			for _, tc := range audioTests {
+				t.Run(tc.file, func(t *testing.T) {
+					d := newDetector()
+					samples := loadWAV(t, "testdata/"+tc.file+".wav")
+					maxSamples := dur.seconds * testSampleRate
+					if len(samples) > maxSamples {
+						samples = samples[:maxSamples]
+					}
+					detected := d.Analyze(samples) != nil
+					if tc.detect && !detected {
+						t.Errorf("expected detection for %s at %s", tc.file, dur.name)
+					}
+					if !tc.detect && detected {
+						t.Errorf("unexpected detection for %s at %s", tc.file, dur.name)
+					}
+				})
+			}
+		})
+	}
+}
+
+// windowedDetect slides an 8-second window over the samples and returns
+// whether any window triggers detection, and whether detection stops after starting
+func windowedDetect(d *Detector, samples []int16, trackStop bool) (detected, stopped bool) {
+	windowSize := 8 * testSampleRate
+	step := 2 * testSampleRate
+	for offset := windowSize; offset <= len(samples); offset += step {
+		window := samples[offset-windowSize : offset]
+		if d.Analyze(window) != nil {
+			detected = true
+			if !trackStop {
+				return
+			}
+		} else if detected {
+			stopped = true
+			return
+		}
+	}
+	return
+}
+
 var alarmThenQuietTests = []struct {
 	name  string
 	alarm string
@@ -295,7 +309,7 @@ var alarmThenQuietTests = []struct {
 	{"BellFireAlarmThenLawnmower", "bell_fire_alarm", "lawnmower"},
 }
 
-// Test transition from sound A to B, where B is an alert
+// Test transition from alarm to quiet — should detect then stop
 func TestMixedTransitions_AlarmThenQuiet(t *testing.T) {
 	for _, tc := range alarmThenQuietTests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -305,7 +319,7 @@ func TestMixedTransitions_AlarmThenQuiet(t *testing.T) {
 			mixed := append(alarm, quiet...)
 			mixed = append(mixed, quiet...)
 
-			detected, stopped := feedAndDetect(d, mixed, true)
+			detected, stopped := windowedDetect(d, mixed, true)
 			if !detected {
 				t.Errorf("expected detection during %s", tc.alarm)
 			}
@@ -328,7 +342,7 @@ var quietThenAlarmTests = []struct {
 	{"LawnmowerThenEmergencySirenSweden", "lawnmower", "emergency_siren_sweden"},
 }
 
-// Test transition from sound A to B, where A is an alert and B should not detect
+// Test transition from quiet to alarm — should eventually detect
 func TestMixedTransitions_QuietThenAlarm(t *testing.T) {
 	for _, tc := range quietThenAlarmTests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -338,7 +352,7 @@ func TestMixedTransitions_QuietThenAlarm(t *testing.T) {
 			mixed := append(quiet, alarm...)
 			mixed = append(mixed, alarm...)
 
-			if detected, _ := feedAndDetect(d, mixed, false); !detected {
+			if detected, _ := windowedDetect(d, mixed, false); !detected {
 				t.Errorf("expected detection for %s after %s", tc.alarm, tc.quiet)
 			}
 		})

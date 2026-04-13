@@ -1,6 +1,9 @@
 package alertdetector
 
-import "math"
+import (
+	"math"
+	"slices"
+)
 
 // rms computes the root mean square (RMS) amplitude of PCM samples
 // approximates signal energy / loudness over the window
@@ -19,17 +22,19 @@ func rms(samples []int16) float64 {
 	return math.Sqrt(float64(sumSq) / float64(n))
 }
 
-// countSwings counts significant up/down swings of the signal envelope (RMS amplitude)
-// swings = direction changes above a dynamic threshold (0.3 -> 30% range)
-func countSwings(segRMS []float64) int {
+// countSwings returns the rate of significant direction changes per segment,
+// using mean absolute deviation for the threshold to stay length-independent
+func countSwings(segRMS []float64) float64 {
 	if len(segRMS) < 3 {
 		return 0
 	}
-	lo, hi := segRMS[0], segRMS[0]
+	// Compute median absolute deviation as a robust local scale
+	m := mean(segRMS)
+	var sumAbsDev float64
 	for _, v := range segRMS {
-		lo, hi = min(lo, v), max(hi, v)
+		sumAbsDev += math.Abs(v - m)
 	}
-	threshold := (hi - lo) * 0.3
+	threshold := sumAbsDev / float64(len(segRMS)) * 1.5
 	if threshold < 1.0 {
 		return 0
 	}
@@ -46,7 +51,7 @@ func countSwings(segRMS []float64) int {
 			rising = nowRising
 		}
 	}
-	return changes
+	return float64(changes) / float64(len(segRMS))
 }
 
 // envelopeRegularity returns the CV of intervals between RMS direction changes
@@ -111,6 +116,49 @@ func normalizeSamples(samples []int16, currentRMS float64) []int16 {
 		out[i] = int16(v)
 	}
 	return out
+}
+
+// chunkedCV computes CV across non-overlapping windows of refSegments
+// and returns the median, making it stable across different clip lengths
+func chunkedCV(vals []float64) float64 {
+	if len(vals) <= refSegments {
+		return cv(vals)
+	}
+	var cvs []float64
+	for i := 0; i+refSegments <= len(vals); i += refSegments {
+		cvs = append(cvs, cv(vals[i:i+refSegments]))
+	}
+	// Include the tail if it has enough segments
+	tail := vals[len(cvs)*refSegments:]
+	if len(tail) >= refSegments/2 {
+		cvs = append(cvs, cv(tail))
+	}
+	if len(cvs) == 0 {
+		return cv(vals)
+	}
+	slices.Sort(cvs)
+	return cvs[len(cvs)/2]
+}
+
+// chunkedEnvReg computes envelopeRegularity across non-overlapping windows
+// and returns the median
+func chunkedEnvReg(vals []float64) float64 {
+	if len(vals) <= refSegments {
+		return envelopeRegularity(vals)
+	}
+	var regs []float64
+	for i := 0; i+refSegments <= len(vals); i += refSegments {
+		regs = append(regs, envelopeRegularity(vals[i:i+refSegments]))
+	}
+	tail := vals[len(regs)*refSegments:]
+	if len(tail) >= refSegments/2 {
+		regs = append(regs, envelopeRegularity(tail))
+	}
+	if len(regs) == 0 {
+		return envelopeRegularity(vals)
+	}
+	slices.Sort(regs)
+	return regs[len(regs)/2]
 }
 
 // cv returns coefficient of variation (stddev / mean)
