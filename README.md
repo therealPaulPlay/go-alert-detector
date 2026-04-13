@@ -7,6 +7,9 @@ Uses a rule-based approach for high performance, fine-tuned against ~100 audio
 samples covering varied real-world conditions including distance, echo, and
 background noise.
 
+> [!WARNING]
+> The [LICENSE](LICENSE) only covers the actual code, not the test `.wav` audio files.
+
 ## Usage
 
 ```go
@@ -54,6 +57,3 @@ func decodePCM(data []byte) []int16 {
 
 `detector.InputSize()` returns the ideal number of samples per call
 (8 seconds worth at the configured sample rate)
-
-> [!WARNING]
-> The [LICENSE](LICENSE) only covers the actual code, not the test `.wav` audio files.
