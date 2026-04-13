@@ -9,8 +9,6 @@ type segmentStats struct {
 	segZCR          []float64
 	maxZCR          float64 // Highest ZCR among any segment
 	highPitchRatio  float64 // Fraction of segments with ZCR > highPitchZCR
-	pitchRange      float64 // ZCR range among high-pitched segments
-	tonality        float64 // Crossing regularity of high-pitched segments (low = clean tone)
 	overallTonality float64 // Crossing regularity of all segments (low = tonal)
 	spectralPurity  float64 // How concentrated energy is around dominant frequency (high = pure tone)
 	midHighRatio    float64 // Energy in 800-6000Hz vs total (high = alarm-like pitch range)
@@ -20,10 +18,8 @@ type segmentStats struct {
 // computeSegments splits audio into 250ms segments and extracts features
 func (d *Detector) computeSegments(samples []int16) segmentStats {
 	var s segmentStats
-	hpMin := 1.0
-	var hpMax float64
 	var total, highPitchCount int
-	var hpTonalitySum, allTonalitySum, acSum float64
+	var allTonalitySum, acSum float64
 
 	for i := 0; i+d.samplesPerSeg <= len(samples); i += d.samplesPerSeg {
 		seg := samples[i : i+d.samplesPerSeg]
@@ -40,27 +36,17 @@ func (d *Detector) computeSegments(samples []int16) segmentStats {
 		s.segRMS = append(s.segRMS, r)
 		s.segZCR = append(s.segZCR, zcr)
 		s.maxZCR = max(s.maxZCR, zcr)
-		reg := crossingRegularity(crossings)
-		allTonalitySum += reg
+		allTonalitySum += crossingRegularity(crossings)
 		acSum += d.peakAutocorrelation(seg)
 		total++
 		if zcr > highPitchZCR {
 			highPitchCount++
-			hpMin = min(hpMin, zcr)
-			hpMax = max(hpMax, zcr)
-			hpTonalitySum += reg
 		}
 	}
 	if total > 0 {
 		s.highPitchRatio = float64(highPitchCount) / float64(total)
 		s.overallTonality = allTonalitySum / float64(total)
 		s.spectralPurity = acSum / float64(total)
-	}
-	if highPitchCount > 1 {
-		s.pitchRange = hpMax - hpMin
-	}
-	if highPitchCount > 0 {
-		s.tonality = hpTonalitySum / float64(highPitchCount)
 	}
 	s.midHighRatio, s.bandFocus = d.bandEnergy(samples)
 	return s
