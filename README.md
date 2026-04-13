@@ -8,18 +8,17 @@ samples covering varied real-world conditions including distance, echo, and
 background noise.
 
 > [!WARNING]
-> The [LICENSE](LICENSE) only covers the actual code, not the test `.wav` audio files.
+> The [LICENSE](LICENSE) only covers the actual code, not the audio files inside `/testdata`.
 
 ## Usage
 
 ```go
 import alertdetector "github.com/PaulPlay/go-alert-detector"
 
-// Sample rate (Hz), baseline size (number of past RMS values to average)
-detector := alertdetector.New(48000, 30)
+detector := alertdetector.New(48000) // Sample rate in Hz
 
-// Feed consecutive audio windows as mono 16-bit signed PCM ([]int16)
-// Detection works from the first call and improves as the baseline grows
+// Feed it mono 16-bit signed PCM samples as []int16
+// Ordering etc. doesn't matter, Analyze is stateless
 result := detector.Analyze(samples)
 if result != nil {
     fmt.Printf("Alert: %s\n", result.MatchedRule)
@@ -27,16 +26,8 @@ if result != nil {
 }
 ```
 
-`Analyze` returns `nil` when no alert is detected or when the baseline
-is still empty (first call seeds it). On detection, the result contains
-the matched rule name and all computed signal metrics.
-
-### Baseline
-
-The detector maintains a rolling average of RMS values from non-alert
-audio to establish the noise floor. The second argument to `New` controls
-how many entries this buffer holds – for example, with a live microphone polled every
-2 seconds, `30` covers about a minute.
+On detection, the result contains the matched rule name and all computed
+signal metrics (spectral purity, tonality, oscillation patterns, etc).
 
 ### Raw PCM bytes
 

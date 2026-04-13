@@ -56,13 +56,8 @@ func loadWAV(t *testing.T, path string) []int16 {
 	return samples
 }
 
-// newSeededDetector creates a detector with a baseline seeded from ambient audio
-func newSeededDetector(t *testing.T) *Detector {
-	t.Helper()
-	d := New(testSampleRate, 15)
-	ambient := loadWAV(t, "testdata/suburban_garden_ambience_baseline.wav")
-	d.Analyze(ambient[:min(d.inputSamples, len(ambient))])
-	return d
+func newDetector() *Detector {
+	return New(testSampleRate)
 }
 
 // Scale the volume by a factor (e.g. 0.5 -> 50% volume)
@@ -213,7 +208,7 @@ func detectAudio(d *Detector, samples []int16) bool {
 func TestAudioDetection(t *testing.T) {
 	for _, tc := range audioTests {
 		t.Run(tc.file, func(t *testing.T) {
-			d := newSeededDetector(t)
+			d := newDetector()
 			samples := loadWAV(t, "testdata/"+tc.file+".wav")
 			detected := detectAudio(d, samples)
 			if tc.detect && !detected {
@@ -238,7 +233,7 @@ func TestAudioDetection_VolumeScaling(t *testing.T) {
 		t.Run(vol.name, func(t *testing.T) {
 			for _, tc := range audioTests {
 				t.Run(tc.file, func(t *testing.T) {
-					d := newSeededDetector(t)
+					d := newDetector()
 					samples := scaleVolume(loadWAV(t, "testdata/"+tc.file+".wav"), vol.factor)
 					detected := detectAudio(d, samples)
 					if tc.detect && !detected {
@@ -253,34 +248,6 @@ func TestAudioDetection_VolumeScaling(t *testing.T) {
 	}
 }
 
-// TestAudioDetection_DifferentBaselines tests a few files against non-default baselines
-func TestAudioDetection_DifferentBaselines(t *testing.T) {
-	for _, bl := range []string{"cafe_ambience", "talking", "scratching"} {
-		t.Run(bl, func(t *testing.T) {
-			for _, tc := range []audioTestCase{
-				{"smoke_alarm", true}, {"firetruck_siren", true}, {"evacuation_alarm", true},
-				{"piano", false}, {"loud_birds", false}, {"baby_crying", false},
-			} {
-				t.Run(tc.file, func(t *testing.T) {
-					d := New(testSampleRate, 15)
-					ambient := loadWAV(t, "testdata/"+bl+".wav")
-
-					// Seed the baseline
-					d.Analyze(ambient[:min(d.inputSamples, len(ambient))])
-
-					// Then check for the detection result
-					detected := detectAudio(d, loadWAV(t, "testdata/"+tc.file+".wav"))
-					if tc.detect && !detected {
-						t.Errorf("expected detection with %s baseline", bl)
-					}
-					if !tc.detect && detected {
-						t.Errorf("unexpected detection with %s baseline", bl)
-					}
-				})
-			}
-		})
-	}
-}
 
 // scaleSpeed resamples to simulate speed change (factor > 1 = faster/higher pitch)
 func scaleSpeed(samples []int16, factor float64) []int16 {
@@ -300,11 +267,11 @@ func TestAudioDetection_SpeedScaling(t *testing.T) {
 	for _, s := range []struct {
 		name   string
 		factor float64
-	}{{"slow_0.9x", 0.9}, {"fast_1.1x", 1.1}} {
+	}{{"slow_0.9x", 0.9}, {"slow_0.95x", 0.95}, {"fast_1.05x", 1.05}, {"fast_1.1x", 1.1}} {
 		t.Run(s.name, func(t *testing.T) {
 			for _, tc := range audioTests {
 				t.Run(tc.file, func(t *testing.T) {
-					d := newSeededDetector(t)
+					d := newDetector()
 					detected := detectAudio(d, scaleSpeed(loadWAV(t, "testdata/"+tc.file+".wav"), s.factor))
 					if tc.detect && !detected {
 						t.Errorf("expected detection at %s", s.name)
@@ -323,16 +290,16 @@ var alarmThenQuietTests = []struct {
 	alarm string
 	quiet string
 }{
-	{"SmokeAlarmThenMusic", "smoke_alarm", "music"},
-	{"FiretruckSirenThenTalking", "firetruck_siren", "talking"},
-	{"FireAlarmThenLawnmower", "fire_alarm", "lawnmower"},
+	{"AirRaidSirenThenMusic", "air_raid_siren", "music"},
+	{"BelgiumNuclearSirenThenTalking", "belgium_nuclear_siren", "talking"},
+	{"BellFireAlarmThenLawnmower", "bell_fire_alarm", "lawnmower"},
 }
 
 // Test transition from sound A to B, where B is an alert
 func TestMixedTransitions_AlarmThenQuiet(t *testing.T) {
 	for _, tc := range alarmThenQuietTests {
 		t.Run(tc.name, func(t *testing.T) {
-			d := newSeededDetector(t)
+			d := newDetector()
 			alarm := loadWAV(t, "testdata/"+tc.alarm+".wav")
 			quiet := loadWAV(t, "testdata/"+tc.quiet+".wav")
 			mixed := append(alarm, quiet...)
@@ -354,18 +321,18 @@ var quietThenAlarmTests = []struct {
 	quiet string
 	alarm string
 }{
-	{"RainThenSmokeAlarm", "rain", "smoke_alarm"},
-	{"CafeThenFireAlarm", "cafe_ambience", "fire_alarm"},
-	{"MusicThenFiretruckSiren", "music", "firetruck_siren"},
+	{"RainThenAirRaidSiren", "rain", "air_raid_siren"},
+	{"CafeThenBellFireAlarm", "cafe_ambience", "bell_fire_alarm"},
+	{"MusicThenBelgiumNuclearSiren", "music", "belgium_nuclear_siren"},
 	{"TalkingThenAirRaidSiren", "talking", "air_raid_siren"},
-	{"LawnmowerThenSmokeAlarm", "lawnmower", "smoke_alarm"},
+	{"LawnmowerThenEmergencySirenSweden", "lawnmower", "emergency_siren_sweden"},
 }
 
 // Test transition from sound A to B, where A is an alert and B should not detect
 func TestMixedTransitions_QuietThenAlarm(t *testing.T) {
 	for _, tc := range quietThenAlarmTests {
 		t.Run(tc.name, func(t *testing.T) {
-			d := newSeededDetector(t)
+			d := newDetector()
 			quiet := loadWAV(t, "testdata/"+tc.quiet+".wav")
 			alarm := loadWAV(t, "testdata/"+tc.alarm+".wav")
 			mixed := append(quiet, alarm...)
