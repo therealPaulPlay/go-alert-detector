@@ -6,7 +6,14 @@ import (
 	"testing"
 )
 
-// analyzeMetrics computes Metrics for a sample buffer, matching Analyze's logic
+// Sample creation ------------------------------------------------------------------------------------
+
+var ambienceFiles = []string{
+	"cafe_ambience", "rain", "suburban_garden_ambience_baseline",
+	"airplane_austria_ambience", "distant_music_band", "toddlers_playing_laughing",
+}
+
+// analyzeMetrics computes all metrics for the samples (matches Analyze's impl)
 func analyzeMetrics(s []int16) Metrics {
 	d := New(testSampleRate)
 	seg := d.computeSegments(normalizeSamples(s, rms(s)))
@@ -21,17 +28,6 @@ func analyzeMetrics(s []int16) Metrics {
 		EnvRegularity:   chunkedEnvReg(seg.segRMS),
 		Oscillations:    max(countSwings(seg.segRMS), countSwings(seg.segZCR)),
 	}
-}
-
-// ambienceFiles are mixed onto each sample to simulate real-world recordings
-// Each captures a distinct acoustic category to force rule robustness
-var ambienceFiles = []string{
-	"cafe_ambience",                     // music and talking
-	"rain",                              // repeated dull drops
-	"suburban_garden_ambience_baseline", // garden sounds
-	"airplane_austria_ambience",         // voice over engine drone
-	"distant_music_band",                // steady tonal music
-	"toddlers_playing_laughing",         // chaotic, high pitched voice
 }
 
 // mixAmbience overlays ambience onto foreground at passed RMS ratio (0.25 = ambience 25% of foreground RMS)
@@ -58,8 +54,7 @@ func mixAmbience(foreground, ambience []int16, ratio float64) []int16 {
 	return out
 }
 
-// trimToDuration returns the first `seconds` of samples, or the full slice
-// if it's already shorter
+// trimToDuration returns the first `seconds` of samples, or the full slice if already shorter
 func trimToDuration(samples []int16, seconds int) []int16 {
 	limit := seconds * testSampleRate
 	if len(samples) <= limit {
@@ -68,8 +63,7 @@ func trimToDuration(samples []int16, seconds int) []int16 {
 	return samples[:limit]
 }
 
-// addSample stores a metric result in either the positive or negative bucket
-// based on the test case label
+// addSample stores metric result in positive or negative bucket depending on `detect`
 func addSample(tc audioTestCase, m Metrics, positives map[string][]Metrics, negatives *[]Metrics) {
 	if tc.detect {
 		positives[tc.file] = append(positives[tc.file], m)
@@ -122,6 +116,8 @@ func computeAudioSamples(t *testing.T) (positivesByFile map[string][]Metrics, ne
 	}
 	return
 }
+
+// Bound calculation -----------------------------------------------------------------------------------
 
 // metricAccessor pairs a metric name with a function to extract it from Metrics
 type metricAccessor struct {
@@ -205,7 +201,7 @@ func midpointSplit(negatives []Metrics, get func(Metrics) float64, edge float64,
 	if !found {
 		return 0, false
 	}
-	t := round3((edge + nearest) / 2)
+	t := math.Round(((edge+nearest)/2)*1000) / 1000 // Rounded to 3 digits
 	if t <= 0.001 {
 		return 0, false
 	}
@@ -274,14 +270,13 @@ func filterPassing(samples []Metrics, b bound) []Metrics {
 	return kept
 }
 
-func round3(v float64) float64 { return math.Round(v*1000) / 1000 }
+// Build rules based on bounds ----------------------------------------------------------------------------------
 
 // ruleGroup is a set of files that share one rule
-// If unrejected > 0, the rule fails to reject that many negative samples
 type ruleGroup struct {
 	files      []string
 	bounds     []bound
-	unrejected int
+	unrejected int // if > 0 -> the rule fails to reject certain files
 }
 
 // buildSharedRule builds a rule covering all positive variants of the given
@@ -326,8 +321,9 @@ func groupFiles(positives map[string][]Metrics, negatives []Metrics) []ruleGroup
 	return groups
 }
 
-// TestOptimizeRules derives optimal detection rules from the test samples
-// and prints them grouped by which files share each rule
+// Main entry point ------------------------------------------------------------------------------
+
+// TestOptimizeRules derives optimal detection rules from the test samples and prints them
 func TestOptimizeRules(t *testing.T) {
 	positives, negatives := computeAudioSamples(t)
 
