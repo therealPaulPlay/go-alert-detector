@@ -3,6 +3,7 @@ package alertdetector
 import (
 	"fmt"
 	"math"
+	"reflect"
 	"testing"
 )
 
@@ -11,23 +12,6 @@ import (
 var ambienceFiles = []string{
 	"cafe_ambience", "rain", "suburban_garden_ambience_baseline",
 	"airplane_austria_ambience", "distant_music_band", "toddlers_playing_laughing",
-}
-
-// analyzeMetrics computes all metrics for the samples (matches Analyze's impl)
-func analyzeMetrics(s []int16) Metrics {
-	d := New(testSampleRate)
-	seg := d.computeSegments(normalizeSamples(s, rms(s)))
-	return Metrics{
-		MaxZCR:          seg.maxZCR,
-		HighPitchRatio:  seg.highPitchRatio,
-		OverallTonality: seg.overallTonality,
-		SpectralPurity:  seg.spectralPurity,
-		MidHighRatio:    seg.midHighRatio,
-		BandFocus:       seg.bandFocus,
-		OscCV:           chunkedCV(seg.segRMS),
-		EnvRegularity:   chunkedEnvReg(seg.segRMS),
-		Oscillations:    max(countSwings(seg.segRMS), countSwings(seg.segZCR)),
-	}
 }
 
 // mixAmbience overlays ambience onto foreground at passed RMS ratio (0.25 = ambience 25% of foreground RMS)
@@ -63,19 +47,10 @@ func trimToDuration(samples []int16, seconds int) []int16 {
 	return samples[:limit]
 }
 
-// addSample stores metric result in positive or negative bucket depending on `detect`
-func addSample(tc audioTestCase, m Metrics, positives map[string][]Metrics, negatives *[]Metrics) {
-	if tc.detect {
-		positives[tc.file] = append(positives[tc.file], m)
-	} else {
-		*negatives = append(*negatives, m)
-	}
-}
-
 // computeAudioSamples generates variants of each test file across four
 // independent axes (speed, volume, duration, ambience) without combining them
-// Returns samples split into positives (alarms) and negatives
-func computeAudioSamples(t *testing.T) (positivesByFile map[string][]Metrics, negatives []Metrics) {
+// Returns samples split into positives (alarms) and negatives, both keyed by file
+func computeAudioSamples(t *testing.T) (positives, negatives map[string][]Metrics) {
 	t.Helper()
 	speeds := []float64{0.9, 0.925, 0.95, 0.975, 1.025, 1.05, 1.075, 1.1}
 	volumes := []float64{0.5, 1.5}
@@ -87,31 +62,30 @@ func computeAudioSamples(t *testing.T) (positivesByFile map[string][]Metrics, ne
 		ambiences[i] = loadWAV(t, "testdata/"+f+".wav")
 	}
 
-	positivesByFile = make(map[string][]Metrics)
+	d := New(testSampleRate)
+	positives = make(map[string][]Metrics)
+	negatives = make(map[string][]Metrics)
 	for _, tc := range audioTests {
+		target := positives
+		if !tc.detect {
+			target = negatives
+		}
 		raw := loadWAV(t, "testdata/"+tc.file+".wav")
 
-		// Base sample (unmodified)
-		addSample(tc, analyzeMetrics(raw), positivesByFile, &negatives)
-
-		// Speed variants
+		add := func(s []int16) { target[tc.file] = append(target[tc.file], d.computeMetrics(s)) }
+		add(raw)
 		for _, speed := range speeds {
-			addSample(tc, analyzeMetrics(scaleSpeed(raw, speed)), positivesByFile, &negatives)
+			add(scaleSpeed(raw, speed))
 		}
-
-		// Volume variants
 		for _, vol := range volumes {
-			addSample(tc, analyzeMetrics(scaleVolume(raw, vol)), positivesByFile, &negatives)
+			add(scaleVolume(raw, vol))
 		}
-
-		// Duration variants
 		for _, dur := range durations {
-			addSample(tc, analyzeMetrics(trimToDuration(raw, dur)), positivesByFile, &negatives)
+			add(trimToDuration(raw, dur))
 		}
-
-		// Ambience overlay variants at 0.25 (audible but foreground still dominant)
+		// Ambience overlays at 0.25 (audible but foreground still dominant)
 		for _, amb := range ambiences {
-			addSample(tc, analyzeMetrics(mixAmbience(raw, amb, 0.25)), positivesByFile, &negatives)
+			add(mixAmbience(raw, amb, 0.25))
 		}
 	}
 	return
@@ -119,22 +93,20 @@ func computeAudioSamples(t *testing.T) (positivesByFile map[string][]Metrics, ne
 
 // Bound calculation -----------------------------------------------------------------------------------
 
-// metricAccessor pairs a metric name with a function to extract it from Metrics
-type metricAccessor struct {
-	name string
-	get  func(Metrics) float64
-}
+// metricFields are the names of every float64 field in Metrics, discovered
+// via reflection so the optimizer automatically tracks new metrics
+var metricFields = func() []string {
+	t := reflect.TypeFor[Metrics]()
+	names := make([]string, t.NumField())
+	for i := range names {
+		names[i] = t.Field(i).Name
+	}
+	return names
+}()
 
-var allMetrics = []metricAccessor{
-	{"MaxZCR", func(m Metrics) float64 { return m.MaxZCR }},
-	{"HighPitchRatio", func(m Metrics) float64 { return m.HighPitchRatio }},
-	{"OverallTonality", func(m Metrics) float64 { return m.OverallTonality }},
-	{"SpectralPurity", func(m Metrics) float64 { return m.SpectralPurity }},
-	{"MidHighRatio", func(m Metrics) float64 { return m.MidHighRatio }},
-	{"BandFocus", func(m Metrics) float64 { return m.BandFocus }},
-	{"OscCV", func(m Metrics) float64 { return m.OscCV }},
-	{"EnvRegularity", func(m Metrics) float64 { return m.EnvRegularity }},
-	{"Oscillations", func(m Metrics) float64 { return m.Oscillations }},
+// metricValue reads the i-th metric field from m via reflection
+func metricValue(m Metrics, i int) float64 {
+	return reflect.ValueOf(m).Field(i).Float()
 }
 
 // bound is one side of a threshold on one metric — either "value must be >= threshold"
@@ -146,7 +118,7 @@ type bound struct {
 }
 
 func (b bound) passes(m Metrics) bool {
-	v := allMetrics[b.metricIdx].get(m)
+	v := metricValue(m, b.metricIdx)
 	if b.isMin {
 		return v >= b.threshold
 	}
@@ -157,15 +129,16 @@ func (b bound) passes(m Metrics) bool {
 // between the positive range edge and the nearest negative outside that range
 func candidateBounds(positives, negatives []Metrics) []bound {
 	var candidates []bound
-	for metricIdx, ma := range allMetrics {
-		posLow, posHigh := extent(positives, ma.get)
+	for metricIdx := range metricFields {
+		get := func(m Metrics) float64 { return metricValue(m, metricIdx) }
+		posLow, posHigh := extent(positives, get)
 		if math.IsInf(posLow, 1) {
 			continue
 		}
-		if t, ok := midpointSplit(negatives, ma.get, posLow, true); ok {
+		if t, ok := midpointSplit(negatives, get, posLow, true); ok {
 			candidates = append(candidates, bound{metricIdx, true, t})
 		}
-		if t, ok := midpointSplit(negatives, ma.get, posHigh, false); ok {
+		if t, ok := midpointSplit(negatives, get, posHigh, false); ok {
 			candidates = append(candidates, bound{metricIdx, false, t})
 		}
 	}
@@ -279,6 +252,15 @@ type ruleGroup struct {
 	unrejected int // if > 0 -> the rule fails to reject certain files
 }
 
+// flatten collects every metric across all files in the set into a single slice
+func flatten(s map[string][]Metrics) []Metrics {
+	var out []Metrics
+	for _, variants := range s {
+		out = append(out, variants...)
+	}
+	return out
+}
+
 // buildSharedRule builds a rule covering all positive variants of the given
 // files, returning the bounds and the count of negatives still unrejected
 func buildSharedRule(files []string, positives map[string][]Metrics, negatives []Metrics) ([]bound, int) {
@@ -291,7 +273,8 @@ func buildSharedRule(files []string, positives map[string][]Metrics, negatives [
 
 // groupFiles greedily merges positive files into shared rule groups, adding
 // candidates only if they preserve zero-FP separation
-func groupFiles(positives map[string][]Metrics, negatives []Metrics) []ruleGroup {
+func groupFiles(positives, negatives map[string][]Metrics) []ruleGroup {
+	flatNeg := flatten(negatives)
 	grouped := make(map[string]bool)
 	var groups []ruleGroup
 
@@ -301,12 +284,12 @@ func groupFiles(positives map[string][]Metrics, negatives []Metrics) []ruleGroup
 		}
 
 		members := []string{startFile}
-		bounds, unrejected := buildSharedRule(members, positives, negatives)
+		bounds, unrejected := buildSharedRule(members, positives, flatNeg)
 		for candidateFile := range positives {
 			if grouped[candidateFile] || candidateFile == startFile {
 				continue
 			}
-			if b, u := buildSharedRule(append(members, candidateFile), positives, negatives); u == 0 {
+			if b, u := buildSharedRule(append(members, candidateFile), positives, flatNeg); u == 0 {
 				members = append(members, candidateFile)
 				bounds = b
 				unrejected = u
@@ -326,22 +309,8 @@ func groupFiles(positives map[string][]Metrics, negatives []Metrics) []ruleGroup
 // TestOptimizeRules derives optimal detection rules from the test samples and prints them
 func TestOptimizeRules(t *testing.T) {
 	positives, negatives := computeAudioSamples(t)
-
-	// Count total positive samples for the log line (positives is
-	// map[file][]Metrics — one []Metrics per file with all its variants)
-	var posSamples int
-	for _, variants := range positives {
-		posSamples += len(variants)
-	}
-	// Count unique negative files to mirror the positive-side report
-	negFiles := 0
-	for _, tc := range audioTests {
-		if !tc.detect {
-			negFiles++
-		}
-	}
 	fmt.Printf("\n%d positive files (%d samples), %d negative files (%d samples)\n\n",
-		len(positives), posSamples, negFiles, len(negatives))
+		len(positives), len(flatten(positives)), len(negatives), len(flatten(negatives)))
 
 	groups := groupFiles(positives, negatives)
 	var totalLeaks int
@@ -359,7 +328,7 @@ func TestOptimizeRules(t *testing.T) {
 			if !b.isMin {
 				dir = "max"
 			}
-			fmt.Printf("    %s %s: %.4f\n", dir, allMetrics[b.metricIdx].name, b.threshold)
+			fmt.Printf("    %s %s: %.4f\n", dir, metricFields[b.metricIdx], b.threshold)
 		}
 		fmt.Println()
 	}

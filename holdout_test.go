@@ -57,7 +57,7 @@ func TestHoldout(t *testing.T) {
 // analyzeWithRules computes metrics and checks whether any of the given
 // rules match — used by holdout tests to evaluate rule sets directly
 func analyzeWithRules(samples []int16, rules []rule) bool {
-	m := analyzeMetrics(samples)
+	m := New(testSampleRate).computeMetrics(samples)
 	for _, r := range rules {
 		if r.match(m) {
 			return true

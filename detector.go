@@ -50,9 +50,19 @@ func New(sampleRate int) *Detector {
 
 // Analyze runs alert detection on a PCM sample buffer
 func (d *Detector) Analyze(samples []int16) *Result {
-	overallRMS := rms(samples)
-	seg := d.computeSegments(normalizeSamples(samples, overallRMS))
-	m := Metrics{
+	m := d.computeMetrics(samples)
+	for _, r := range alertRules {
+		if r.match(m) {
+			return &Result{Metrics: m}
+		}
+	}
+	return nil
+}
+
+// computeMetrics runs the full feature-extraction pipeline and returns a Metrics struct
+func (d *Detector) computeMetrics(samples []int16) Metrics {
+	seg := d.computeSegments(normalizeSamples(samples, rms(samples)))
+	return Metrics{
 		MaxZCR:          seg.maxZCR,
 		HighPitchRatio:  seg.highPitchRatio,
 		OverallTonality: seg.overallTonality,
@@ -63,13 +73,6 @@ func (d *Detector) Analyze(samples []int16) *Result {
 		EnvRegularity:   chunkedEnvReg(seg.segRMS),
 		Oscillations:    max(countSwings(seg.segRMS), countSwings(seg.segZCR)),
 	}
-
-	for _, r := range alertRules {
-		if r.match(m) {
-			return &Result{Metrics: m}
-		}
-	}
-	return nil
 }
 
 // rule defines min/max bounds for each metric (0 = don't check)
