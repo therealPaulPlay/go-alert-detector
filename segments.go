@@ -2,8 +2,6 @@ package alertdetector
 
 import "math"
 
-const highPitchZCR = 0.08 // Zero-Crossing-Rate threshold for "high-pitched" (~1900Hz at 48kHz)
-
 type segmentStats struct {
 	segRMS          []float64
 	segZCR          []float64
@@ -20,6 +18,13 @@ func (d *Detector) computeSegments(samples []int16) segmentStats {
 	var s segmentStats
 	var total, highPitchCount int
 	var allTonalitySum, acSum float64
+
+	// Physical frequency boundary for the "high-pitched" segment count
+	const highPitchHz = 2000
+
+	// ZCR threshold derived from highPitchHz: a sine at f Hz makes 2*f
+	// zero crossings per second, so zcr = 2*f/sampleRate
+	highPitchZCR := 2 * float64(highPitchHz) / float64(d.sampleRate)
 
 	for i := 0; i+d.samplesPerSeg <= len(samples); i += d.samplesPerSeg {
 		seg := samples[i : i+d.samplesPerSeg]
@@ -92,7 +97,7 @@ func (d *Detector) peakAutocorrelation(samples []int16) float64 {
 		return 0
 	}
 
-	const stride = 3
+	const stride = 4
 
 	minLag := d.sampleRate / 4000
 	maxLag := min(d.sampleRate/100, n/2)
@@ -106,7 +111,7 @@ func (d *Detector) peakAutocorrelation(samples []int16) float64 {
 		return 0
 	}
 
-	// Two-pass: coarse scan every 4th lag, then refine ±3 around the best
+	// Two-pass: coarse scan every Nth lag, then refine ±N around the best
 	const coarseStep = 4
 	var bestCorr float64
 	bestLag := minLag

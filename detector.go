@@ -9,10 +9,7 @@ import (
 //go:embed rules.json
 var rulesJSON []byte
 
-const (
-	segmentMs   = 250 // Sub-segment size for envelope analysis
-	refSegments = 32  // Reference window for length-independent envelope metrics
-)
+const segmentMs = 250 // Sub-segment size for envelope analysis
 
 // Metrics holds all computed signal features for the analyzed audio
 type Metrics struct {
@@ -114,7 +111,7 @@ func (d *Detector) computeMetrics(samples []int16) Metrics {
 		OscCV:           chunkedCV(seg.segRMS),
 		EnvRegularity:   chunkedEnvReg(seg.segRMS),
 		Oscillations:    max(countSwings(seg.segRMS), countSwings(seg.segZCR)),
-		EnvAutoCorr:     envelopeAutocorrPeak(seg.segRMS, 2, 16),
+		EnvAutoCorr:     envelopeAutocorrPeak(seg.segRMS, 2),
 		AttackSharpness: attackSharpness(seg.segRMS),
 	}
 }

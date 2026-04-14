@@ -3,22 +3,21 @@
     "MaxMaxZCR": 0.0729,
     "MinSpectralPurity": 0.7232,
     "MinMidHighRatio": 0.345,
-    "MaxOscCV": 0.2571,
+    "MaxOscCV": 0.2258,
+    "MinOscillations": 0.149,
     "MaxAttackSharpness": 0.4798
   },
   {
-    "MaxHighPitchRatio": 0.3007,
-    "MinSpectralPurity": 0.6213,
-    "MaxSpectralPurity": 0.8875,
+    "MinSpectralPurity": 0.6217,
     "MinMidHighRatio": 0.3988,
     "MinBandFocus": 0.4082,
+    "MaxOscCV": 0.4356,
     "MaxEnvRegularity": 0.7605,
-    "MinEnvAutoCorr": 0.4743,
-    "MaxAttackSharpness": 0.6589
+    "MinEnvAutoCorr": 0.4743
   },
   {
-    "MinHighPitchRatio": 0.518,
-    "MinSpectralPurity": 0.617,
+    "MinHighPitchRatio": 0.5186,
+    "MinSpectralPurity": 0.6173,
     "MaxAttackSharpness": 0.5265
   },
   {
@@ -29,13 +28,13 @@
   },
   {
     "MinMaxZCR": 0.0531,
-    "MaxOverallTonality": 1.4796,
-    "MinSpectralPurity": 0.651,
+    "MinSpectralPurity": 0.6532,
     "MinMidHighRatio": 0.4706,
     "MaxMidHighRatio": 0.5777,
     "MinBandFocus": 0.3553,
-    "MaxOscCV": 0.6337,
-    "MinEnvAutoCorr": 0.4116
+    "MinOscillations": 0.0591,
+    "MinEnvAutoCorr": 0.4116,
+    "MaxAttackSharpness": 0.8341
   },
   {
     "MinSpectralPurity": 0.5702,
@@ -47,20 +46,15 @@
     "MaxAttackSharpness": 0.5485
   },
   {
-    "MinSpectralPurity": 0.795,
+    "MinSpectralPurity": 0.7949,
     "MinMidHighRatio": 0.3078,
     "MaxMidHighRatio": 0.4163,
-    "MaxAttackSharpness": 0.6297
+    "MaxOscCV": 0.4659
   },
   {
-    "MaxOverallTonality": 2.0855,
-    "MinSpectralPurity": 0.7659,
-    "MaxSpectralPurity": 0.848,
-    "MinBandFocus": 0.4472,
-    "MinOscCV": 0.1181,
-    "MaxOscCV": 0.2445,
-    "MaxEnvRegularity": 0.5975,
-    "MaxEnvAutoCorr": 0.3509
+    "MaxSpectralPurity": 0.8276,
+    "MaxMidHighRatio": 0.1135,
+    "MaxOscCV": 0.1775
   },
   {
     "MinMaxZCR": 0.0518,
@@ -71,18 +65,22 @@
     "MinEnvAutoCorr": 0.6359
   },
   {
-    "MinHighPitchRatio": 0.8908,
+    "MinHighPitchRatio": 0.8838,
     "MinBandFocus": 0.3441,
-    "MaxOscCV": 0.3135
+    "MaxOscCV": 0.1412
+  },
+  {
+    "MaxOverallTonality": 0.56,
+    "MinSpectralPurity": 0.8008,
+    "MaxEnvAutoCorr": 0.2028
   },
   {
     "MinMidHighRatio": 0.6209,
-    "MaxEnvAutoCorr": 0.1055
+    "MaxEnvAutoCorr": 0.1552
   },
   {
-    "MinHighPitchRatio": 0.4782,
-    "MinSpectralPurity": 0.7509,
-    "MaxMidHighRatio": 0.5674,
+    "MinHighPitchRatio": 0.4409,
+    "MinSpectralPurity": 0.7515,
     "MinOscillations": 0.218,
     "MaxOscillations": 0.4181
   }

@@ -28,7 +28,7 @@ func countSwings(segRMS []float64) float64 {
 	if len(segRMS) < 3 {
 		return 0
 	}
-	// Compute median absolute deviation as a robust local scale
+	// Compute mean absolute deviation as a robust local scale
 	m := mean(segRMS)
 	var sumAbsDev float64
 	for _, v := range segRMS {
@@ -118,19 +118,20 @@ func normalizeSamples(samples []int16, currentRMS float64) []int16 {
 	return out
 }
 
-// chunkedCV computes CV across non-overlapping windows of refSegments
-// and returns the median, making it stable across different clip lengths
+// chunkedCV computes CV across non-overlapping 8-segment (2-second) windows
+// and returns the median - 2s is roughly 1 cycle of typical pulsed alarms, so each window
+// captures one full on/off period and the median reflects within-cycle variation (this window performed best in tests)
 func chunkedCV(vals []float64) float64 {
-	if len(vals) <= refSegments {
+	const window = 8
+	if len(vals) <= window {
 		return cv(vals)
 	}
 	var cvs []float64
-	for i := 0; i+refSegments <= len(vals); i += refSegments {
-		cvs = append(cvs, cv(vals[i:i+refSegments]))
+	for i := 0; i+window <= len(vals); i += window {
+		cvs = append(cvs, cv(vals[i:i+window]))
 	}
-	// Include the tail if it has enough segments
-	tail := vals[len(cvs)*refSegments:]
-	if len(tail) >= refSegments/2 {
+	tail := vals[len(cvs)*window:]
+	if len(tail) >= window/2 {
 		cvs = append(cvs, cv(tail))
 	}
 	if len(cvs) == 0 {
@@ -140,18 +141,20 @@ func chunkedCV(vals []float64) float64 {
 	return cvs[len(cvs)/2]
 }
 
-// chunkedEnvReg computes envelopeRegularity across non-overlapping windows
-// and returns the median
+// chunkedEnvReg computes envelopeRegularity across non-overlapping 32-segment
+// (8-second) windows and returns the median - ~8s is one full sweep cycle of a large siren,
+// each window captures one complete rhythm pattern and the median reflects how regular it is
 func chunkedEnvReg(vals []float64) float64 {
-	if len(vals) <= refSegments {
+	const window = 32
+	if len(vals) <= window {
 		return envelopeRegularity(vals)
 	}
 	var regs []float64
-	for i := 0; i+refSegments <= len(vals); i += refSegments {
-		regs = append(regs, envelopeRegularity(vals[i:i+refSegments]))
+	for i := 0; i+window <= len(vals); i += window {
+		regs = append(regs, envelopeRegularity(vals[i:i+window]))
 	}
-	tail := vals[len(regs)*refSegments:]
-	if len(tail) >= refSegments/2 {
+	tail := vals[len(regs)*window:]
+	if len(tail) >= window/2 {
 		regs = append(regs, envelopeRegularity(tail))
 	}
 	if len(regs) == 0 {
@@ -186,12 +189,10 @@ func attackSharpness(segRMS []float64) float64 {
 }
 
 // envelopeAutocorrPeak returns the strongest autocorrelation of segRMS at
-// lags in [minLag..maxLag], measuring whether the envelope shape repeats at
-// any stable slow period (e.g. beep-beep-beep)
-func envelopeAutocorrPeak(segRMS []float64, minLag, maxLag int) float64 {
-	if maxLag >= len(segRMS) {
-		maxLag = len(segRMS) - 1
-	}
+// lags from minLag up to len(segRMS)-1, measuring whether the envelope shape
+// repeats at any stable period (e.g. beep-beep-beep)
+func envelopeAutocorrPeak(segRMS []float64, minLag int) float64 {
+	maxLag := len(segRMS) - 1
 	if minLag >= maxLag {
 		return 0
 	}
