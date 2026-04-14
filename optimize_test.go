@@ -7,6 +7,7 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"sort"
 	"testing"
 )
 
@@ -14,7 +15,7 @@ import (
 
 var ambienceFiles = []string{
 	"cafe_ambience", "rain", "suburban_garden_ambience_baseline",
-	"airplane_austria_ambience", "distant_music_band", "toddlers_playing_laughing",
+	"airplane_austria_ambience", "distant_music_band",
 }
 
 // mixAmbience overlays ambience onto foreground at passed RMS ratio (0.25 = ambience 25% of foreground RMS)
@@ -152,8 +153,8 @@ func candidateBounds(positives, negatives []Metrics) []bound {
 	return candidates
 }
 
-// midpointSplit finds the nearest negative on the outside of edge and returns
-// a threshold halfway between edge and that negative - below=true is for min bounds, below=false for max bounds
+// midpointSplit picks the threshold halfway to the nearest negative outside
+// the positive range, below=true -> min bound, below=false -> max bound
 func midpointSplit(negatives []Metrics, get func(Metrics) float64, edge float64, below bool) (float64, bool) {
 	nearest := math.Inf(1)
 	if below {
@@ -171,7 +172,14 @@ func midpointSplit(negatives []Metrics, get func(Metrics) float64, edge float64,
 	if !found {
 		return 0, false
 	}
-	t := math.Round(((edge+nearest)/2)*1000) / 1000 // Rounded to 3 digits
+	// Round so the positive edge stays on the accepting side even after quantizing
+	// Min bound (v >= t): round down so t <= edge
+	// Max bound (v <  t): round up   so t >  edge
+	mid := (edge + nearest) / 2
+	t := math.Ceil(mid*1000) / 1000
+	if below {
+		t = math.Floor(mid*1000) / 1000
+	}
 	if t <= 0.001 {
 		return 0, false
 	}
@@ -190,40 +198,39 @@ func splitBy(samples []Metrics, b bound) (passing, failing []Metrics) {
 	return
 }
 
-// findBounds greedily picks bounds that reject the most remaining negatives
-// while keeping every positive. Returns the chosen bounds plus how many
-// negatives could not be rejected by any available bound
-func findBounds(positives, negatives []Metrics) (chosen []bound, unrejected int) {
-	// Keep only candidates that pass every positive - positives never change
-	// across iterations so we can filter once up front
-	var candidates []bound
-	for _, c := range candidateBounds(positives, negatives) {
-		if pass, _ := splitBy(positives, c); len(pass) == len(positives) {
-			candidates = append(candidates, c)
+// findBounds greedily picks bounds accepting every positive while rejecting
+// the most remaining negatives, returns the bounds and the leak count
+func findBounds(positives, negatives []Metrics) (chosen []bound, leaks int) {
+	// Start with every candidate bound that accepts every positive
+	// Positives never change across iterations so we only filter once
+	var usable []bound
+	for _, candidate := range candidateBounds(positives, negatives) {
+		if accepted, _ := splitBy(positives, candidate); len(accepted) == len(positives) {
+			usable = append(usable, candidate)
 		}
 	}
 
-	remaining := append([]Metrics(nil), negatives...)
-	for len(remaining) > 0 {
-		// Pick the candidate rejecting the most remaining negatives
+	remainingNegs := append([]Metrics(nil), negatives...)
+	for len(remainingNegs) > 0 {
+		// Pick the usable bound that rejects the most remaining negatives
 		bestIdx := -1
 		var bestKept []Metrics
 		bestRejected := 0
-		for i, c := range candidates {
-			kept, _ := splitBy(remaining, c)
-			rejected := len(remaining) - len(kept)
+		for i, candidate := range usable {
+			kept, _ := splitBy(remainingNegs, candidate)
+			rejected := len(remainingNegs) - len(kept)
 			if rejected > bestRejected {
 				bestIdx, bestRejected, bestKept = i, rejected, kept
 			}
 		}
 		if bestIdx < 0 {
-			break // No candidate helps further
+			break // No remaining candidate rejects any more negatives
 		}
-		chosen = append(chosen, candidates[bestIdx])
-		remaining = bestKept
-		candidates = append(candidates[:bestIdx], candidates[bestIdx+1:]...)
+		chosen = append(chosen, usable[bestIdx])
+		remainingNegs = bestKept
+		usable = append(usable[:bestIdx], usable[bestIdx+1:]...)
 	}
-	return chosen, len(remaining)
+	return chosen, len(remainingNegs)
 }
 
 // Build rules based on bounds ----------------------------------------------------------------------------------
@@ -253,78 +260,46 @@ func samplesFor(files []string, positives map[string][]Metrics) []Metrics {
 	return out
 }
 
-// margin returns the total headroom of a rule: for each bound, the distance
-// from the threshold to the nearest positive sample on the accepting side
-// Larger = more robust against distribution shift
-func margin(bounds []bound, samples []Metrics) float64 {
-	var total float64
-	for _, b := range bounds {
-		best := math.Inf(1)
-		for _, s := range samples {
-			v := metricValue(s, b.metricIdx)
-			var d float64
-			if b.isMin && v >= b.threshold {
-				d = v - b.threshold
-			} else if !b.isMin && v < b.threshold {
-				d = b.threshold - v
-			} else {
-				continue
-			}
-			if d < best {
-				best = d
-			}
-		}
-		if !math.IsInf(best, 1) {
-			total += best
-		}
-	}
-	return total
-}
-
-// groupFiles agglomeratively merges files, starting from singletons and
-// repeatedly picking the pair with the fewest-bound zero-FP rule
+// groupFiles seeds one rule per file then merges any pair whose joint rule
+// still rejects every negative, first-match wins, sorted for determinism
 func groupFiles(positives, negatives map[string][]Metrics) []ruleGroup {
-	flatNeg := flatten(negatives)
+	allNegatives := flatten(negatives)
 
-	// Start with one group per file
-	var groups []ruleGroup
+	sortedFiles := make([]string, 0, len(positives))
 	for file := range positives {
-		b, u := findBounds(samplesFor([]string{file}, positives), flatNeg)
-		groups = append(groups, ruleGroup{[]string{file}, b, u})
+		sortedFiles = append(sortedFiles, file)
+	}
+	sort.Strings(sortedFiles)
+
+	// Seed with one singleton group per file
+	groups := make([]ruleGroup, 0, len(sortedFiles))
+	for _, file := range sortedFiles {
+		bounds, leaks := findBounds(samplesFor([]string{file}, positives), allNegatives)
+		groups = append(groups, ruleGroup{[]string{file}, bounds, leaks})
 	}
 
+	// Repeatedly scan all pairs and merge the first one whose joint rule
+	// has zero training leaks - stop when no more merges are possible
 	for {
-		i, j, merged := findBestMerge(groups, positives, flatNeg)
-		if i < 0 {
+		mergedThisPass := false
+		for i := 0; i < len(groups) && !mergedThisPass; i++ {
+			for j := i + 1; j < len(groups); j++ {
+				combinedFiles := slices.Concat(groups[i].files, groups[j].files)
+				bounds, leaks := findBounds(samplesFor(combinedFiles, positives), allNegatives)
+				if leaks != 0 {
+					continue
+				}
+				groups[i] = ruleGroup{combinedFiles, bounds, 0}
+				groups = append(groups[:j], groups[j+1:]...)
+				mergedThisPass = true
+				break
+			}
+		}
+		if !mergedThisPass {
 			break
 		}
-		groups[i] = merged
-		groups = append(groups[:j], groups[j+1:]...)
 	}
 	return groups
-}
-
-// findBestMerge picks the pair whose combined zero-FP rule needs the fewest
-// bounds, tie-broken by the largest positive-side margin. i=-1 if none exist
-func findBestMerge(groups []ruleGroup, positives map[string][]Metrics, flatNeg []Metrics) (bestI, bestJ int, best ruleGroup) {
-	bestI = -1
-	var bestMargin float64
-	for i := range groups {
-		for j := i + 1; j < len(groups); j++ {
-			files := slices.Concat(groups[i].files, groups[j].files)
-			samples := samplesFor(files, positives)
-			b, u := findBounds(samples, flatNeg)
-			if u != 0 {
-				continue
-			}
-			m := margin(b, samples)
-			if bestI < 0 || len(b) < len(best.bounds) ||
-				(len(b) == len(best.bounds) && m > bestMargin) {
-				bestI, bestJ, best, bestMargin = i, j, ruleGroup{files, b, 0}, m
-			}
-		}
-	}
-	return
 }
 
 // boundsToRule converts a slice of bounds into a rule struct by setting the

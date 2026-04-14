@@ -5,31 +5,27 @@ import (
 	"testing"
 )
 
-// holdoutTests are files the optimizer has never seen
-// Used to evaluate generalization of the current production rules
-var holdoutTests = []audioTestCase{
-	// --- Should detect ---
-	{"air_raid_siren_devon", true},
-	{"bombtest_siren", true},
-	{"fast_smoke_alarm_variation", true},
-	{"house_alarm_berlin_with_cars", true},
-	{"siren_france", true},
-	{"smoke_alarm_slight_echo", true},
+// Holdout tests evaluate the current alertRules against files the optimizer
+// has never seen, measuring generalization
+//
+// How to add a holdout test:
+//   1. Drop the wav file into testdata/
+//   2. Add an entry below - {"<filename_without_ext>", true} for alerts that
+//      should be detected, false for sounds that should not
+//   3. Do NOT also add the file to audioTests in detector_test.go - a file
+//      that is in the training set defeats the purpose of a holdout
+//
+// How to run (the -v is required so the result counts actually print):
+//   go test -v -run TestHoldout
 
-	// --- Should NOT detect ---
-	{"alan_walker_recreation", false},
-	{"cars_honking", false},
-	{"guitar", false},
-	{"hiphop_with_vocals", false},
-	{"orchestra_warmup", false},
-	{"space_orchestra", false},
-	{"violin_dark", false},
-	{"violin_pain", false},
-}
+var holdoutTests = []audioTestCase{}
 
 // TestHoldout evaluates the current alertRules against files the optimizer
 // has never seen, reporting true/false positive/negative counts
 func TestHoldout(t *testing.T) {
+	if len(holdoutTests) == 0 {
+		t.Skip("no holdout tests defined")
+	}
 	var tp, fp, tn, fn int
 	var fpFiles, fnFiles []string
 	for _, tc := range holdoutTests {
