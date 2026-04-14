@@ -161,6 +161,30 @@ func chunkedEnvReg(vals []float64) float64 {
 	return regs[len(regs)/2]
 }
 
+// attackSharpness returns the max abs inter-segment RMS delta divided by
+// the clip's max RMS - high = sharp on/off transitions (beeps, pulses)
+func attackSharpness(segRMS []float64) float64 {
+	if len(segRMS) < 2 {
+		return 0
+	}
+	var mx float64
+	for _, v := range segRMS {
+		if v > mx {
+			mx = v
+		}
+	}
+	if mx < 1e-6 {
+		return 0
+	}
+	var maxDelta float64
+	for i := 1; i < len(segRMS); i++ {
+		if d := math.Abs(segRMS[i] - segRMS[i-1]); d > maxDelta {
+			maxDelta = d
+		}
+	}
+	return maxDelta / mx
+}
+
 // envelopeAutocorrPeak returns the strongest autocorrelation of segRMS at
 // lags in [minLag..maxLag], measuring whether the envelope shape repeats at
 // any stable slow period (e.g. beep-beep-beep)

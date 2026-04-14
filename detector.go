@@ -56,6 +56,10 @@ type Metrics struct {
 	// segments - high = envelope shape repeats at a fixed slow period
 	// (beep-beep-beep rhythm), low = no rhythmic repetition
 	EnvAutoCorr float64
+
+	// Max absolute inter-segment RMS delta divided by clip max RMS -
+	// high = sharp on/off transitions (beeps, pulses)
+	AttackSharpness float64
 }
 
 // Result is returned by Analyze when an alert is detected
@@ -111,6 +115,7 @@ func (d *Detector) computeMetrics(samples []int16) Metrics {
 		EnvRegularity:   chunkedEnvReg(seg.segRMS),
 		Oscillations:    max(countSwings(seg.segRMS), countSwings(seg.segZCR)),
 		EnvAutoCorr:     envelopeAutocorrPeak(seg.segRMS, 2, 16),
+		AttackSharpness: attackSharpness(seg.segRMS),
 	}
 }
 
@@ -138,6 +143,8 @@ type rule struct {
 	MaxOscillations    float64 `json:"MaxOscillations,omitempty"`
 	MinEnvAutoCorr     float64 `json:"MinEnvAutoCorr,omitempty"`
 	MaxEnvAutoCorr     float64 `json:"MaxEnvAutoCorr,omitempty"`
+	MinAttackSharpness float64 `json:"MinAttackSharpness,omitempty"`
+	MaxAttackSharpness float64 `json:"MaxAttackSharpness,omitempty"`
 }
 
 func (r rule) match(m Metrics) bool {
@@ -160,7 +167,9 @@ func (r rule) match(m Metrics) bool {
 		(r.MinOscillations == 0 || m.Oscillations >= r.MinOscillations) &&
 		(r.MaxOscillations == 0 || m.Oscillations < r.MaxOscillations) &&
 		(r.MinEnvAutoCorr == 0 || m.EnvAutoCorr >= r.MinEnvAutoCorr) &&
-		(r.MaxEnvAutoCorr == 0 || m.EnvAutoCorr < r.MaxEnvAutoCorr)
+		(r.MaxEnvAutoCorr == 0 || m.EnvAutoCorr < r.MaxEnvAutoCorr) &&
+		(r.MinAttackSharpness == 0 || m.AttackSharpness >= r.MinAttackSharpness) &&
+		(r.MaxAttackSharpness == 0 || m.AttackSharpness < r.MaxAttackSharpness)
 }
 
 // alertRules is loaded from the embedded rules.json at package init
