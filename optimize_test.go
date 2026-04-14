@@ -18,8 +18,8 @@ var ambienceFiles = []string{
 	"airplane_austria_ambience", "distant_music_band",
 }
 
-// mixAmbience overlays ambience onto foreground at passed RMS ratio (0.25 = ambience 25% of foreground RMS)
-// ambience is looped if shorter than the foregroun
+// mixAmbience overlays ambience onto foreground at the given RMS ratio,
+// looping the ambience if shorter than the foreground
 func mixAmbience(foreground, ambience []int16, ratio float64) []int16 {
 	fgRMS := rms(foreground)
 	ambRMS := rms(ambience)
@@ -27,6 +27,12 @@ func mixAmbience(foreground, ambience []int16, ratio float64) []int16 {
 		return foreground
 	}
 	scale := fgRMS * ratio / ambRMS
+	// Cap so that loud foregrounds don't amplify the ambience past its natural
+	// volume, which avoids unnatural mixes where the ambience's spectrum is
+	// distorted by being pumped above its real level
+	if scale > 1.0 {
+		scale = 1.0
+	}
 
 	out := make([]int16, len(foreground))
 	for i := range foreground {
