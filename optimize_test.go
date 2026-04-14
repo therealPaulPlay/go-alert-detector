@@ -137,16 +137,15 @@ func candidateBounds(positives, negatives []Metrics) []bound {
 	}
 	var candidates []bound
 	for idx := range metricFields {
-		get := func(m Metrics) float64 { return metricValue(m, idx) }
 		low, high := math.Inf(1), math.Inf(-1)
 		for _, p := range positives {
-			v := get(p)
+			v := metricValue(p, idx)
 			low, high = min(low, v), max(high, v)
 		}
-		if t, ok := midpointSplit(negatives, get, low, true); ok {
+		if t, ok := midpointSplit(negatives, idx, low, true); ok {
 			candidates = append(candidates, bound{idx, true, t})
 		}
-		if t, ok := midpointSplit(negatives, get, high, false); ok {
+		if t, ok := midpointSplit(negatives, idx, high, false); ok {
 			candidates = append(candidates, bound{idx, false, t})
 		}
 	}
@@ -155,24 +154,23 @@ func candidateBounds(positives, negatives []Metrics) []bound {
 
 // midpointSplit picks the threshold halfway to the nearest negative outside
 // the positive range, below=true -> min bound, below=false -> max bound
-func midpointSplit(negatives []Metrics, get func(Metrics) float64, edge float64, below bool) (float64, bool) {
+func midpointSplit(negatives []Metrics, idx int, edge float64, below bool) (float64, bool) {
 	nearest := math.Inf(1)
 	if below {
 		nearest = math.Inf(-1)
 	}
-	found := false
 	for _, n := range negatives {
-		v := get(n)
+		v := metricValue(n, idx)
 		if below && v < edge && v > nearest {
-			nearest, found = v, true
+			nearest = v
 		} else if !below && v > edge && v < nearest {
-			nearest, found = v, true
+			nearest = v
 		}
 	}
-	if !found {
+	if math.IsInf(nearest, 0) {
 		return 0, false
 	}
-	// Round so the positive edge stays on the accepting side even after quantizing
+	// Round so the positive edge stays on the accepting side after quantizing
 	// Min bound (v >= t): round down so t <= edge
 	// Max bound (v <  t): round up   so t >  edge
 	mid := (edge + nearest) / 2
@@ -186,49 +184,45 @@ func midpointSplit(negatives []Metrics, get func(Metrics) float64, edge float64,
 	return t, true
 }
 
-// splitBy partitions samples into those passing and failing the bound
-func splitBy(samples []Metrics, b bound) (passing, failing []Metrics) {
+// keepPassing returns only the samples that pass the bound
+func keepPassing(samples []Metrics, b bound) []Metrics {
+	out := make([]Metrics, 0, len(samples))
 	for _, s := range samples {
 		if b.passes(s) {
-			passing = append(passing, s)
-		} else {
-			failing = append(failing, s)
+			out = append(out, s)
 		}
 	}
-	return
+	return out
 }
 
 // findBounds greedily picks bounds accepting every positive while rejecting
 // the most remaining negatives, returns the bounds and the leak count
 func findBounds(positives, negatives []Metrics) (chosen []bound, leaks int) {
-	// Start with every candidate bound that accepts every positive
-	// Positives never change across iterations so we only filter once
+	// Keep only candidates that accept every positive - positives don't
+	// change across iterations so we filter once
 	var usable []bound
-	for _, candidate := range candidateBounds(positives, negatives) {
-		if accepted, _ := splitBy(positives, candidate); len(accepted) == len(positives) {
-			usable = append(usable, candidate)
+	for _, c := range candidateBounds(positives, negatives) {
+		if len(keepPassing(positives, c)) == len(positives) {
+			usable = append(usable, c)
 		}
 	}
 
 	remainingNegs := append([]Metrics(nil), negatives...)
 	for len(remainingNegs) > 0 {
-		// Pick the usable bound that rejects the most remaining negatives
 		bestIdx := -1
 		var bestKept []Metrics
 		bestRejected := 0
-		for i, candidate := range usable {
-			kept, _ := splitBy(remainingNegs, candidate)
-			rejected := len(remainingNegs) - len(kept)
-			if rejected > bestRejected {
+		for i, c := range usable {
+			kept := keepPassing(remainingNegs, c)
+			if rejected := len(remainingNegs) - len(kept); rejected > bestRejected {
 				bestIdx, bestRejected, bestKept = i, rejected, kept
 			}
 		}
 		if bestIdx < 0 {
-			break // No remaining candidate rejects any more negatives
+			break
 		}
 		chosen = append(chosen, usable[bestIdx])
 		remainingNegs = bestKept
-		usable = append(usable[:bestIdx], usable[bestIdx+1:]...)
 	}
 	return chosen, len(remainingNegs)
 }
