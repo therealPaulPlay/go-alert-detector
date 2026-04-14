@@ -161,6 +161,42 @@ func chunkedEnvReg(vals []float64) float64 {
 	return regs[len(regs)/2]
 }
 
+// envelopeAutocorrPeak returns the strongest autocorrelation of segRMS at
+// lags in [minLag..maxLag], measuring whether the envelope shape repeats at
+// any stable slow period (e.g. beep-beep-beep)
+func envelopeAutocorrPeak(segRMS []float64, minLag, maxLag int) float64 {
+	if maxLag >= len(segRMS) {
+		maxLag = len(segRMS) - 1
+	}
+	if minLag >= maxLag {
+		return 0
+	}
+	var m float64
+	for _, v := range segRMS {
+		m += v
+	}
+	m /= float64(len(segRMS))
+	var den float64
+	for _, v := range segRMS {
+		d := v - m
+		den += d * d
+	}
+	if den < 1e-12 {
+		return 0
+	}
+	var best float64
+	for lag := minLag; lag <= maxLag; lag++ {
+		var num float64
+		for i := 0; i+lag < len(segRMS); i++ {
+			num += (segRMS[i] - m) * (segRMS[i+lag] - m)
+		}
+		if ac := num / den; ac > best {
+			best = ac
+		}
+	}
+	return best
+}
+
 // cv returns coefficient of variation (stddev / mean)
 func cv(vals []float64) float64 {
 	if len(vals) < 2 {

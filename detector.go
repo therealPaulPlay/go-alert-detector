@@ -16,15 +16,46 @@ const (
 
 // Metrics holds all computed signal features for the analyzed audio
 type Metrics struct {
-	MaxZCR          float64 // highest zero-crossing rate among segments
-	HighPitchRatio  float64 // fraction of segments with ZCR above high-pitch threshold
-	OverallTonality float64 // crossing regularity of all segments (low = tonal)
-	SpectralPurity  float64 // energy concentration around dominant frequency (high = pure tone)
-	MidHighRatio    float64 // energy in 800-6000Hz vs total (high = alarm-like pitch range)
-	BandFocus       float64 // energy concentration in one band (high = narrow-band signal)
-	OscCV           float64 // coefficient of variation of RMS oscillations
-	EnvRegularity   float64 // envelope rhythm regularity (low = regular like alarm)
-	Oscillations    float64 // rate of significant direction changes in envelope
+	// Peak zero-crossing rate among 250ms segments - a proxy for the
+	// highest pitch present in the clip (higher = shriller tone)
+	MaxZCR float64
+
+	// Fraction of 250ms segments whose ZCR exceeds the high-pitch threshold
+	// (high = sustained whistle/siren pitch, low = low-pitched or absent)
+	HighPitchRatio float64
+
+	// Sample-level zero-crossing interval CV (Coefficient of Variation) averaged across segments
+	// Low = clean periodic waveform (pure tone), high = noisy/aperiodic
+	OverallTonality float64
+
+	// Sample-level autocorrelation peak strength in the 100-4000Hz lag range
+	// averaged across segments - high = a single dominant frequency is present
+	SpectralPurity float64
+
+	// Fraction of total energy falling in the 400-4000Hz IIR bands
+	// High = energy concentrated in typical alarm pitch range
+	MidHighRatio float64
+
+	// Share of total energy in the single loudest IIR band
+	// High = narrow-band signal (pure siren tone), low = broadband noise
+	BandFocus float64
+
+	// Coefficient of variation of segment RMS, median across 32-segment chunks
+	// High = envelope amplitude varies a lot, low = steady loudness
+	OscCV float64
+
+	// CV of intervals between envelope direction changes, median-chunked
+	// Low = evenly-spaced envelope peaks (rhythmic), high = chaotic timing
+	EnvRegularity float64
+
+	// Rate of significant direction changes in the segment RMS/ZCR envelopes
+	// High = many swings (warbling/pulsing), low = near-constant tone
+	Oscillations float64
+
+	// Peak autocorrelation of the segment RMS envelope at lags of 2-16
+	// segments - high = envelope shape repeats at a fixed slow period
+	// (beep-beep-beep rhythm), low = no rhythmic repetition
+	EnvAutoCorr float64
 }
 
 // Result is returned by Analyze when an alert is detected
@@ -79,6 +110,7 @@ func (d *Detector) computeMetrics(samples []int16) Metrics {
 		OscCV:           chunkedCV(seg.segRMS),
 		EnvRegularity:   chunkedEnvReg(seg.segRMS),
 		Oscillations:    max(countSwings(seg.segRMS), countSwings(seg.segZCR)),
+		EnvAutoCorr:     envelopeAutocorrPeak(seg.segRMS, 2, 16),
 	}
 }
 
@@ -104,6 +136,8 @@ type rule struct {
 	MaxEnvRegularity   float64 `json:"MaxEnvRegularity,omitempty"`
 	MinOscillations    float64 `json:"MinOscillations,omitempty"`
 	MaxOscillations    float64 `json:"MaxOscillations,omitempty"`
+	MinEnvAutoCorr     float64 `json:"MinEnvAutoCorr,omitempty"`
+	MaxEnvAutoCorr     float64 `json:"MaxEnvAutoCorr,omitempty"`
 }
 
 func (r rule) match(m Metrics) bool {
@@ -124,7 +158,9 @@ func (r rule) match(m Metrics) bool {
 		(r.MinEnvRegularity == 0 || m.EnvRegularity >= r.MinEnvRegularity) &&
 		(r.MaxEnvRegularity == 0 || m.EnvRegularity < r.MaxEnvRegularity) &&
 		(r.MinOscillations == 0 || m.Oscillations >= r.MinOscillations) &&
-		(r.MaxOscillations == 0 || m.Oscillations < r.MaxOscillations)
+		(r.MaxOscillations == 0 || m.Oscillations < r.MaxOscillations) &&
+		(r.MinEnvAutoCorr == 0 || m.EnvAutoCorr >= r.MinEnvAutoCorr) &&
+		(r.MaxEnvAutoCorr == 0 || m.EnvAutoCorr < r.MaxEnvAutoCorr)
 }
 
 // alertRules is loaded from the embedded rules.json at package init

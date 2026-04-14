@@ -170,15 +170,15 @@ func midpointSplit(negatives []Metrics, idx int, edge float64, below bool) (floa
 	if math.IsInf(nearest, 0) {
 		return 0, false
 	}
-	// Round so the positive edge stays on the accepting side after quantizing
+	// Round to 4 digits so the positive edge stays on the accepting side
 	// Min bound (v >= t): round down so t <= edge
 	// Max bound (v <  t): round up   so t >  edge
 	mid := (edge + nearest) / 2
-	t := math.Ceil(mid*1000) / 1000
+	t := math.Ceil(mid*10000) / 10000
 	if below {
-		t = math.Floor(mid*1000) / 1000
+		t = math.Floor(mid*10000) / 10000
 	}
-	if t <= 0.001 {
+	if t <= 0.0001 {
 		return 0, false
 	}
 	return t, true

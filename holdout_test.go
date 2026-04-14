@@ -18,7 +18,34 @@ import (
 // How to run (the -v is required so the result counts actually print):
 //   go test -v -run TestHoldout
 
-var holdoutTests = []audioTestCase{}
+var holdoutTests = []audioTestCase{
+	// --- Should detect ---
+	{"biohazard_alarm", true},
+	{"canada_air_raid_siren", true},
+	{"eas_alarm_austria", true},
+	{"eas_alarm_bermuda", true},
+	{"eas_alarm_taiwan", true},
+	{"eas_alarm_usa", true},
+	{"house_alarm_with_door_opening", true},
+	{"multiple_tornado_sirens", true},
+	{"phone_eas_alarm_japan", true},
+	{"police_siren_passing", true},
+	{"russia_air_raid_siren", true},
+	{"scratchy_fire_alarm", true},
+	{"uk_ambulance_siren", true},
+
+	// --- Should NOT detect ---
+	{"african_penguins", false},
+	{"computer_cd_drive", false},
+	{"electric_guitar", false},
+	{"elephant_trumpets", false},
+	{"handsaw", false},
+	{"jelly", false},
+	{"singing_soprano", false},
+	{"toilet_flush", false},
+	{"wiping_window_squeaks", false},
+	{"writing_and_turning_pages", false},
+}
 
 // TestHoldout evaluates the current alertRules against files the optimizer
 // has never seen, reporting true/false positive/negative counts
