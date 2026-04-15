@@ -226,6 +226,7 @@ var audioTests = []audioTestCase{
 	{"violin_pain", false},
 	{"opera_singer", false},
 	{"cafe_ambience", false},
+	{"suburban_garden_ambience_baseline", false},
 	{"music", false},
 	{"door_slam", false},
 	{"lawnmower", false},

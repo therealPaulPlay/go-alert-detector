@@ -9,7 +9,7 @@
     "MaxOscCV": 0.4352,
     "MaxEnvRegularity": 0.6784,
     "MinEnvAutoCorr": 0.1926,
-    "MaxAttackSharpness": 0.5712
+    "MaxAttackSharpness": 0.571
   },
   {
     "MinMaxZCR": 0.049,
@@ -112,7 +112,7 @@
   {
     "MinMaxZCR": 0.0676,
     "MaxOverallTonality": 1.0319,
-    "MinSpectralPurity": 0.5073,
+    "MinSpectralPurity": 0.5079,
     "MinMidHighRatio": 0.5146,
     "MinOscCV": 0.0888,
     "MinEnvAutoCorr": 0.5964
