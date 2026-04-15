@@ -29,9 +29,9 @@ if result != nil {
 On detection, the result contains all computed signal metrics used by the
 rules.
 
-### Raw PCM bytes
+### Working with raw PCM bytes
 
-If your source provides raw bytes rather than `[]int16`, decode first:
+If your source provides raw bytes rather than `[]int16`, decode them first (example code below).
 
 ```go
 func decodePCM(data []byte) []int16 {
