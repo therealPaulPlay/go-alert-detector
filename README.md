@@ -1,9 +1,9 @@
 # Alert detector
 
-Go library for detecting fire alarms, sirens, smoke detectors, police sirens,
+Go library for detecting fire alarms, sirens, house alarms, smoke detectors 
 and other warning and emergency sounds in PCM audio streams.
 
-Uses a rule-based approach for high performance, fine-tuned against ~100 audio
+Uses a rule-based approach for high performance, fine-tuned against ~200 audio
 samples covering varied real-world conditions including distance, echo, and
 background noise.
 
@@ -13,21 +13,21 @@ background noise.
 ## Usage
 
 ```go
-import alertdetector "github.com/PaulPlay/go-alert-detector"
+import alertdetector "github.com/therealPaulPlay/go-alert-detector"
 
 detector := alertdetector.New(48000) // Sample rate in Hz
 
-// Feed it mono 16-bit signed PCM samples as []int16
-// Ordering etc. doesn't matter, Analyze is stateless
-result := detector.Analyze(samples)
+// Pass a buffer of mono 16-bit signed PCM samples
+// Analyze is stateless, ordering between calls doesn't matter
+result := detector.Analyze(buffer)
 if result != nil {
-    fmt.Printf("Alert: %s\n", result.MatchedRule)
+    fmt.Printf("Alert detected\n")
     fmt.Printf("Metrics: %+v\n", result.Metrics)
 }
 ```
 
-On detection, the result contains the matched rule name and all computed
-signal metrics (spectral purity, tonality, oscillation patterns, etc).
+On detection, the result contains all computed signal metrics used by the
+rules.
 
 ### Raw PCM bytes
 
@@ -36,15 +36,16 @@ If your source provides raw bytes rather than `[]int16`, decode first:
 ```go
 func decodePCM(data []byte) []int16 {
     n := len(data) / 2
-    samples := make([]int16, n)
+    buffer := make([]int16, n)
     for i := range n {
-        samples[i] = int16(binary.LittleEndian.Uint16(data[i*2:]))
+        buffer[i] = int16(binary.LittleEndian.Uint16(data[i*2:]))
     }
-    return samples
+    return buffer
 }
 ```
 
 ### Window size
 
-`detector.InputSize()` returns the ideal number of samples per call
-(8 seconds worth at the configured sample rate)
+The detector works on audio buffers of varying length, but metrics are most
+stable when the buffer covers at least one full siren sweep cycle (~8 seconds).
+Feeding 8-20 second buffers is recommended.
