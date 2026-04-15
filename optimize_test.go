@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"slices"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -320,6 +321,59 @@ func boundsToRule(bounds []bound) rule {
 	return r
 }
 
+// Rule labelling --------------------------------------------------------------------------
+
+// sirenKeywords are filename words that identify a sound as a siren
+var sirenKeywords = []string{
+	"siren", "ambulance", "police", "firetruck", "tornado", "martinshorn",
+	"raid", "war",
+}
+
+// alarmKeywords are filename words that identify a sound as an alarm
+var alarmKeywords = []string{
+	"alarm", "smoke", "eas", "beeping", "bell", "iphone", "timer", "fire",
+	"house", "intruder",
+}
+
+// classifyFile returns "siren" or "alarm" for a single filename by counting
+// keyword hits
+func classifyFile(file string) string {
+	var siren, alarm int
+	for _, w := range strings.Split(file, "_") {
+		for _, k := range sirenKeywords {
+			if w == k {
+				siren++
+			}
+		}
+		for _, k := range alarmKeywords {
+			if w == k {
+				alarm++
+			}
+		}
+	}
+	if alarm > siren {
+		return "alarm"
+	}
+	return "siren"
+}
+
+// labelForFiles assigns a rule group "siren" or "alarm" by classifying each
+// file individually then majority-voting
+func labelForFiles(files []string) string {
+	var siren, alarm int
+	for _, f := range files {
+		if classifyFile(f) == "siren" {
+			siren++
+		} else {
+			alarm++
+		}
+	}
+	if alarm > siren {
+		return "alarm"
+	}
+	return "siren"
+}
+
 // Main entry point ------------------------------------------------------------------------------
 
 // TestOptimizeRules derives optimal detection rules from the test samples,
@@ -334,6 +388,7 @@ func TestOptimizeRules(t *testing.T) {
 	var totalLeaks int
 	for i, g := range groups {
 		rules[i] = boundsToRule(g.bounds)
+		rules[i].Label = labelForFiles(g.files)
 		status := ""
 		if g.unrejected > 0 {
 			status = fmt.Sprintf("  [LEAKS %d negatives]", g.unrejected)

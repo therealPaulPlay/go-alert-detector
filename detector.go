@@ -62,6 +62,7 @@ type Metrics struct {
 // Result is returned by Analyze when an alert is detected
 type Result struct {
 	Metrics Metrics // all computed signal features
+	Label   string  // "siren" or "alarm" - coarse category of the matched rule
 }
 
 type Detector struct {
@@ -92,7 +93,7 @@ func (d *Detector) Analyze(samples []int16) *Result {
 	m := d.computeMetrics(samples)
 	for _, r := range alertRules {
 		if r.match(m) {
-			return &Result{Metrics: m}
+			return &Result{Metrics: m, Label: r.Label}
 		}
 	}
 	return nil
@@ -120,6 +121,7 @@ func (d *Detector) computeMetrics(samples []int16) Metrics {
 // A rule matches when all non-zero bounds are satisfied
 // JSON field names match the Metrics struct so rules.json stays readable
 type rule struct {
+	Label              string  `json:"label,omitempty"`
 	MinMaxZCR          float64 `json:"MinMaxZCR,omitempty"`
 	MaxMaxZCR          float64 `json:"MaxMaxZCR,omitempty"`
 	MinHighPitchRatio  float64 `json:"MinHighPitchRatio,omitempty"`
