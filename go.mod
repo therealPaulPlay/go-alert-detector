@@ -1,4 +1,4 @@
-module github.com/PaulPlay/go-alert-detector
+module github.com/therealPaulPlay/go-alert-detector
 
 go 1.24
 
