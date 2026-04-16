@@ -16,7 +16,7 @@ import (
 
 var ambienceFiles = []string{
 	"cafe_ambience", "rain", "suburban_garden_ambience_baseline",
-	"airplane_austria_ambience", "distant_music_band",
+	"airplane_austria_ambience", "distant_music_band", "microphone_noise_floor",
 }
 
 // mixAmbience overlays ambience onto foreground at the given RMS ratio,
