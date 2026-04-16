@@ -291,7 +291,7 @@ func TestAudioDetection(t *testing.T) {
 	for _, tc := range audioTests {
 		t.Run(tc.file, func(t *testing.T) {
 			d := newDetector()
-			samples := loadWAV(t, "testdata/"+tc.file+".wav")
+			samples := loadWAV(t, "testdata/audio/"+tc.file+".wav")
 			detected := d.Analyze(samples) != nil
 			if tc.detect && !detected {
 				t.Errorf("expected detection for %s", tc.file)
@@ -316,7 +316,7 @@ func TestAudioDetection_VolumeScaling(t *testing.T) {
 			for _, tc := range audioTests {
 				t.Run(tc.file, func(t *testing.T) {
 					d := newDetector()
-					samples := scaleVolume(loadWAV(t, "testdata/"+tc.file+".wav"), vol.factor)
+					samples := scaleVolume(loadWAV(t, "testdata/audio/"+tc.file+".wav"), vol.factor)
 					detected := d.Analyze(samples) != nil
 					if tc.detect && !detected {
 						t.Errorf("expected detection for %s at %s", tc.file, vol.name)
@@ -340,7 +340,7 @@ func TestAudioDetection_SpeedScaling(t *testing.T) {
 			for _, tc := range audioTests {
 				t.Run(tc.file, func(t *testing.T) {
 					d := newDetector()
-					detected := d.Analyze(scaleSpeed(loadWAV(t, "testdata/"+tc.file+".wav"), s.factor)) != nil
+					detected := d.Analyze(scaleSpeed(loadWAV(t, "testdata/audio/"+tc.file+".wav"), s.factor)) != nil
 					if tc.detect && !detected {
 						t.Errorf("expected detection at %s", s.name)
 					}
@@ -363,7 +363,7 @@ func TestAudioDetection_DurationTrimming(t *testing.T) {
 			for _, tc := range audioTests {
 				t.Run(tc.file, func(t *testing.T) {
 					d := newDetector()
-					samples := loadWAV(t, "testdata/"+tc.file+".wav")
+					samples := loadWAV(t, "testdata/audio/"+tc.file+".wav")
 					maxSamples := dur.seconds * testSampleRate
 					if len(samples) > maxSamples {
 						samples = samples[:maxSamples]
@@ -416,8 +416,8 @@ func TestMixedTransitions_AlarmThenQuiet(t *testing.T) {
 	for _, tc := range alarmThenQuietTests {
 		t.Run(tc.name, func(t *testing.T) {
 			d := newDetector()
-			alarm := loadWAV(t, "testdata/"+tc.alarm+".wav")
-			quiet := loadWAV(t, "testdata/"+tc.quiet+".wav")
+			alarm := loadWAV(t, "testdata/audio/"+tc.alarm+".wav")
+			quiet := loadWAV(t, "testdata/audio/"+tc.quiet+".wav")
 			mixed := append(alarm, quiet...)
 			mixed = append(mixed, quiet...)
 
@@ -449,8 +449,8 @@ func TestMixedTransitions_QuietThenAlarm(t *testing.T) {
 	for _, tc := range quietThenAlarmTests {
 		t.Run(tc.name, func(t *testing.T) {
 			d := newDetector()
-			quiet := loadWAV(t, "testdata/"+tc.quiet+".wav")
-			alarm := loadWAV(t, "testdata/"+tc.alarm+".wav")
+			quiet := loadWAV(t, "testdata/audio/"+tc.quiet+".wav")
+			alarm := loadWAV(t, "testdata/audio/"+tc.alarm+".wav")
 			mixed := append(quiet, alarm...)
 			mixed = append(mixed, alarm...)
 

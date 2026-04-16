@@ -70,7 +70,7 @@ func computeAudioSamples(t *testing.T) (positives, negatives map[string][]Metric
 	// Pre-load ambiences once
 	ambiences := make([][]int16, len(ambienceFiles))
 	for i, f := range ambienceFiles {
-		ambiences[i] = loadWAV(t, "testdata/"+f+".wav")
+		ambiences[i] = loadWAV(t, "testdata/audio/"+f+".wav")
 	}
 
 	d := New(testSampleRate)
@@ -81,7 +81,7 @@ func computeAudioSamples(t *testing.T) (positives, negatives map[string][]Metric
 		if !tc.detect {
 			target = negatives
 		}
-		raw := loadWAV(t, "testdata/"+tc.file+".wav")
+		raw := loadWAV(t, "testdata/audio/"+tc.file+".wav")
 
 		add := func(s []int16) { target[tc.file] = append(target[tc.file], d.computeMetrics(s)) }
 		add(raw)

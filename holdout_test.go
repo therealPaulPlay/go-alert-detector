@@ -9,7 +9,7 @@ import (
 // has never seen, measuring generalization
 //
 // How to add a holdout test:
-//   1. Drop the wav file into testdata/
+//   1. Drop the wav file into testdata/audio/
 //   2. Add an entry below - {"<filename_without_ext>", true} for alerts that
 //      should be detected, false for sounds that should not
 //   3. Do NOT also add the file to audioTests in detector_test.go - a file
@@ -29,7 +29,7 @@ func TestHoldout(t *testing.T) {
 	var tp, fp, tn, fn int
 	var fpFiles, fnFiles []string
 	for _, tc := range holdoutTests {
-		samples := loadWAV(t, "testdata/"+tc.file+".wav")
+		samples := loadWAV(t, "testdata/audio/"+tc.file+".wav")
 		detected := analyzeWithRules(samples, alertRules)
 		switch {
 		case tc.detect && detected:
