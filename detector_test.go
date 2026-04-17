@@ -191,6 +191,7 @@ var audioTests = []audioTestCase{
 
 	// --- Should NOT detect ---
 	{"rain", false},
+	{"thunder", false},
 	{"aurora_dreams_female_voice", false},
 	{"buffalo_refrain", false},
 	{"coldplay_beat_drop", false},
