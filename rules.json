@@ -80,14 +80,14 @@
   {
     "label": "alarm",
     "MinOverallTonality": 0.7822,
-    "MinSpectralPurity": 0.6181,
     "MaxMidHighRatio": 0.5415,
     "MinBandFocus": 0.4142,
     "MaxBandFocus": 0.5749,
     "MinOscCV": 0.4136,
     "MaxEnvRegularity": 0.5857,
     "MaxOscillations": 0.4273,
-    "MinEnvAutoCorr": 0.4204
+    "MinEnvAutoCorr": 0.4204,
+    "MaxAttackSharpness": 0.8678
   },
   {
     "label": "alarm",
@@ -114,7 +114,7 @@
   },
   {
     "label": "alarm",
-    "MaxMaxZCR": 0.0841,
+    "MaxMaxZCR": 0.084,
     "MaxOverallTonality": 1.0294,
     "MaxSpectralPurity": 0.7354,
     "MinMidHighRatio": 0.6132,
@@ -179,17 +179,17 @@
     "MinSpectralPurity": 0.7664,
     "MaxSpectralPurity": 0.8479,
     "MinOscCV": 0.1037,
+    "MaxOscCV": 0.23,
     "MaxEnvRegularity": 0.5487,
-    "MaxEnvAutoCorr": 0.3503,
-    "MaxAttackSharpness": 0.4689
+    "MaxEnvAutoCorr": 0.3503
   },
   {
     "label": "alarm",
+    "MaxMaxZCR": 0.1463,
     "MinHighPitchRatio": 0.9261,
     "MinSpectralPurity": 0.5758,
-    "MinBandFocus": 0.3177,
-    "MaxOscCV": 0.3225,
-    "MinOscillations": 0.1027
+    "MinOscCV": 0.1824,
+    "MaxOscCV": 0.3225
   },
   {
     "label": "alarm",
@@ -218,31 +218,13 @@
   },
   {
     "label": "alarm",
-    "MaxMaxZCR": 0.0918,
-    "MinSpectralPurity": 0.6394,
-    "MaxSpectralPurity": 0.8122,
-    "MinMidHighRatio": 0.4214,
-    "MaxMidHighRatio": 0.5013,
-    "MinEnvAutoCorr": 0.4716
-  },
-  {
-    "label": "alarm",
-    "MinOverallTonality": 1.2081,
-    "MinMidHighRatio": 0.5894,
-    "MaxBandFocus": 0.3721
-  },
-  {
-    "label": "siren",
+    "MinMaxZCR": 0.0759,
     "MinSpectralPurity": 0.6524,
-    "MaxMidHighRatio": 0.383,
+    "MaxMidHighRatio": 0.4573,
+    "MinBandFocus": 0.4096,
     "MaxBandFocus": 0.7049,
-    "MinOscCV": 0.1381,
-    "MaxOscCV": 0.2369,
-    "MaxEnvRegularity": 0.627,
-    "MinOscillations": 0.1384,
-    "MaxOscillations": 0.4697,
-    "MinAttackSharpness": 0.2437,
-    "MaxAttackSharpness": 0.456
+    "MinOscCV": 0.1471,
+    "MaxOscCV": 0.2782
   },
   {
     "label": "alarm",
@@ -259,6 +241,13 @@
     "MinSpectralPurity": 0.6625,
     "MaxBandFocus": 0.4649,
     "MaxEnvAutoCorr": 0.3945
+  },
+  {
+    "label": "siren",
+    "MinMaxZCR": 0.0302,
+    "MaxOverallTonality": 0.594,
+    "MinMidHighRatio": 0.3077,
+    "MaxMidHighRatio": 0.383
   },
   {
     "label": "siren",
